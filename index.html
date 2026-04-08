@@ -8,30 +8,38 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a1a; font-family: Georgia, 'Times New Roman', serif; }
 
+canvas#scene { position: fixed; inset: 0; z-index: 0; display: block; }
+
 /* ═══════════════════════════════════════════════════════════════
-   LOADING INDICATOR — CSS-only, shows before JS loads
+   LOADING OVERLAY
    ═══════════════════════════════════════════════════════════════ */
 #loading {
   position: fixed; inset: 0; z-index: 1000;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: #0a0a1a; color: #c8a86e;
 }
-#loading .spinner {
-  width: 48px; height: 48px; border: 3px solid rgba(200,168,110,0.2);
-  border-top-color: #c8a86e; border-radius: 50%;
-  animation: spin 1s linear infinite;
+#loading p { font-size: 20px; opacity: 0.8; margin-bottom: 20px; }
+#progress-bar-bg {
+  width: 260px; height: 6px; background: rgba(200,168,110,0.15);
+  border-radius: 3px; overflow: hidden;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
-#loading p { margin-top: 20px; font-size: 20px; opacity: 0.8; }
-#loading .timeout-msg { display: none; margin-top: 12px; font-size: 14px; opacity: 0.5; }
+#progress-bar {
+  width: 0%; height: 100%; background: #c8a86e;
+  border-radius: 3px; transition: width 0.2s;
+}
+#loading .error-msg {
+  display: none; margin-top: 20px; font-size: 16px; color: #ff6644;
+  max-width: 400px; text-align: center; line-height: 1.5;
+}
 
 /* ═══════════════════════════════════════════════════════════════
-   TITLE SCREEN + START MAGIC BUTTON
+   TITLE OVERLAY
    ═══════════════════════════════════════════════════════════════ */
 #title-screen {
   position: fixed; inset: 0; z-index: 100;
   display: none; flex-direction: column; align-items: center; justify-content: center;
-  background: rgba(10,10,26,0.85); color: #c8a86e; text-align: center;
+  background: rgba(10,10,26,0.75); color: #c8a86e; text-align: center;
+  cursor: pointer; user-select: none;
 }
 #title-screen h1 {
   font-size: clamp(36px, 8vw, 72px); letter-spacing: 8px;
@@ -41,1297 +49,304 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a1a; f
   font-size: clamp(14px, 3vw, 22px); opacity: 0.7; margin-top: 10px;
   font-style: italic;
 }
-#start-btn {
-  margin-top: 40px; padding: 16px 48px; font-size: 22px;
-  background: linear-gradient(135deg, #c8a86e, #a07830);
-  border: none; border-radius: 30px; color: #0a0a1a;
-  cursor: pointer; font-family: inherit; font-weight: bold;
-  letter-spacing: 2px; min-width: 200px; min-height: 56px;
-  transition: transform 0.2s, box-shadow 0.2s;
+#title-screen .enter-prompt {
+  margin-top: 50px; font-size: 18px; opacity: 0.5;
+  animation: pulse 2s ease-in-out infinite;
 }
-#start-btn:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(200,168,110,0.5); }
-#title-screen .privacy-note {
-  position: absolute; bottom: 20px; font-size: 12px; opacity: 0.4; max-width: 400px;
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   UI OVERLAY
+   DEBUG / FPS OVERLAY
    ═══════════════════════════════════════════════════════════════ */
-#ui-overlay {
-  position: fixed; inset: 0; z-index: 50; pointer-events: none;
-}
-#wand-status {
-  position: absolute; top: 16px; left: 16px;
-  font-size: 14px; color: #c8a86e; opacity: 0.6;
-}
-#spell-hints {
-  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-  font-size: clamp(12px, 2vw, 18px); color: #c8a86e; opacity: 0.4;
-  text-align: center; white-space: nowrap; transition: opacity 0.5s;
-}
-#spell-name-display {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  font-size: clamp(36px, 8vw, 72px); color: #FFD700;
-  text-shadow: 0 0 40px rgba(255,215,0,0.6), 0 0 80px rgba(255,215,0,0.3);
-  opacity: 0; transition: opacity 0.3s; pointer-events: none;
-  letter-spacing: 6px;
-}
-#cooldown-indicator {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  width: 80px; height: 80px; opacity: 0; pointer-events: none;
-}
-#status-message {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, 60px);
-  font-size: 16px; color: #c8a86e; opacity: 0; text-align: center;
-  transition: opacity 0.5s;
-}
 #debug-overlay {
-  position: absolute; top: 16px; right: 16px;
+  position: fixed; top: 16px; right: 16px; z-index: 200;
   font-size: 12px; color: #0f0; font-family: monospace;
   display: none; text-align: right; line-height: 1.6;
+  pointer-events: none;
 }
-/* Touch-to-cast bar for mobile */
-#touch-bar {
-  position: absolute; bottom: 0; left: 0; right: 0;
-  display: none; justify-content: center; gap: 8px;
-  padding: 12px; background: rgba(10,10,26,0.7);
-  pointer-events: auto;
-}
-#touch-bar button {
-  width: 60px; height: 60px; border-radius: 50%;
-  border: 2px solid rgba(200,168,110,0.4);
-  background: rgba(200,168,110,0.1); color: #c8a86e;
-  font-size: 10px; font-family: inherit; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.2s;
-}
-#touch-bar button:active { background: rgba(200,168,110,0.4); }
-
-/* Aria live region for screen readers */
-#aria-live { position: absolute; left: -9999px; }
 </style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.168.0",
+    "three/addons/": "https://esm.sh/three@0.168.0/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
 
-<!-- Loading indicator (visible immediately, before JS) -->
+<canvas id="scene"></canvas>
+
+<!-- Loading overlay with progress bar -->
 <div id="loading">
-  <div class="spinner"></div>
   <p>Loading your magic...</p>
-  <p class="timeout-msg" id="loading-timeout">Taking too long? Try refreshing the page.</p>
+  <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+  <p class="error-msg" id="error-msg"></p>
 </div>
 
-<!-- Title screen with Start Magic button -->
+<!-- Title overlay -->
 <div id="title-screen">
   <h1>MAYA MAGIC</h1>
   <p class="subtitle">Wave your wand. Speak your spell.</p>
-  <button id="start-btn">START MAGIC</button>
-  <p class="privacy-note">Your camera stays on this device. Voice recognition is processed by your browser.</p>
+  <p class="enter-prompt">Click to Enter</p>
 </div>
 
-<!-- UI overlay -->
-<div id="ui-overlay">
-  <div id="wand-status"></div>
-  <div id="spell-name-display"></div>
-  <canvas id="cooldown-indicator" width="80" height="80"></canvas>
-  <div id="status-message"></div>
-  <div id="spell-hints">Say: Lumos &middot; Glacius &middot; Ignis &middot; Levitas &middot; Nova &middot; Tempest &nbsp;|&nbsp; or press 1-6</div>
-  <div id="debug-overlay"></div>
-  <div id="touch-bar">
-    <button data-spell="lumos">Lumos</button>
-    <button data-spell="glacius">Glacius</button>
-    <button data-spell="ignis">Ignis</button>
-    <button data-spell="levitas">Levitas</button>
-    <button data-spell="nova">Nova</button>
-    <button data-spell="tempest">Tempest</button>
-  </div>
-  <div id="aria-live" aria-live="polite" aria-atomic="true"></div>
-</div>
+<!-- Debug overlay -->
+<div id="debug-overlay"></div>
 
 <script type="module">
 /* ═══════════════════════════════════════════════════════════════
-   CDN IMPORTS
+   IMPORTS
    ═══════════════════════════════════════════════════════════════ */
-import * as THREE from 'https://esm.sh/three@0.168.0';
-import { EffectComposer } from 'https://esm.sh/three@0.168.0/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://esm.sh/three@0.168.0/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'https://esm.sh/three@0.168.0/examples/jsm/postprocessing/UnrealBloomPass.js';
-
-/* ═══════════════════════════════════════════════════════════════
-   CONSTANTS / CONFIG
-   ═══════════════════════════════════════════════════════════════ */
-const CONFIG = {
-  // Camera
-  fov: 60, camPos: [0, 1.6, 3], camLookAt: [0, 1, 0],
-  // Bloom
-  bloomStrength: 1.0, bloomRadius: 0.4, bloomThreshold: 0.6,
-  // Wand detection
-  detectW: 160, detectH: 120, motionThreshold: 30, calibrationFrames: 90,
-  // Particles
-  trailPoolSize: 300, spellPoolSize: 300, ambientPoolSize: 150,
-  trailPerFrame: 6, trailLifetime: 1.0,
-  // Spells
-  spellDuration: 4000, spellUnwind: 500, castDebounce: 500,
-  // Performance
-  degradeFpsThreshold: 30, degradeFrameCount: 60, hardDegradeFps: 20,
-  // Voice
-  watchdogDelay: 100, maxWatchdogRestarts: 5, narratorResumeDelay: 500,
-};
-
-const SPELLS = ['lumos', 'glacius', 'ignis', 'levitas', 'nova', 'tempest'];
-const SPELL_VOICES = {
-  lumos: 'LUMOS! You command the light itself!',
-  glacius: 'GLACIUS! The frost obeys your command!',
-  ignis: 'IGNIS! The flames dance at your command!',
-  levitas: 'LEVITAS! Rise! You command the very air!',
-  nova: 'NOVA! A star is born from your wand!',
-  tempest: 'TEMPEST! The very winds answer your call!',
-};
-const SPELL_ALIASES = {
-  loomis: 'lumos', loomus: 'lumos', lumis: 'lumos', loom: 'lumos',
-  glassus: 'glacius', glacier: 'glacius', glac: 'glacius',
-  ignas: 'ignis', ignite: 'ignis',
-  tempus: 'tempest', tempes: 'tempest',
-  novah: 'nova',
-  levitas: 'levitas',
-};
-const KEYBOARD_MAP = { '1': 'lumos', '2': 'glacius', '3': 'ignis', '4': 'levitas', '5': 'nova', '6': 'tempest' };
-
-/* ═══════════════════════════════════════════════════════════════
-   STATE
-   ═══════════════════════════════════════════════════════════════ */
-const state = {
-  started: false, debugMode: false,
-  // Wand
-  wandX: 0, wandY: 0, wandDetected: false, wandLostTimer: 0,
-  calibrating: true, calibrationFrame: 0,
-  prevFrame: null, bgFrame: null,
-  // Spell
-  activeSpell: null, lastCastTime: 0, spellCleanup: null,
-  // Performance
-  fps: 60, fpsFrames: 0, fpsTime: 0,
-  lowFpsCount: 0, degradeLevel: 0,
-  // Voice
-  recognitionActive: false, recognitionPaused: false, watchdogRestarts: 0,
-  // Detection timing
-  detectMs: 0,
-};
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 /* ═══════════════════════════════════════════════════════════════
    DOM REFS
    ═══════════════════════════════════════════════════════════════ */
 const $loading = document.getElementById('loading');
-const $loadingTimeout = document.getElementById('loading-timeout');
+const $progressBar = document.getElementById('progress-bar');
+const $errorMsg = document.getElementById('error-msg');
 const $titleScreen = document.getElementById('title-screen');
-const $startBtn = document.getElementById('start-btn');
-const $wandStatus = document.getElementById('wand-status');
-const $spellHints = document.getElementById('spell-hints');
-const $spellDisplay = document.getElementById('spell-name-display');
-const $cooldown = document.getElementById('cooldown-indicator');
-const $statusMsg = document.getElementById('status-message');
 const $debugOverlay = document.getElementById('debug-overlay');
-const $touchBar = document.getElementById('touch-bar');
-const $ariaLive = document.getElementById('aria-live');
-
-// CDN load timeout
-const loadTimer = setTimeout(() => { $loadingTimeout.style.display = 'block'; }, 10000);
+const canvas = document.getElementById('scene');
 
 /* ═══════════════════════════════════════════════════════════════
-   AUDIO ENGINE — Web Audio procedural synthesis
+   STATE
    ═══════════════════════════════════════════════════════════════ */
-let audioCtx = null;
-
-function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-}
-
-function playWhoosh() {
-  if (!audioCtx) return;
-  const dur = 0.4;
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    const t = i / audioCtx.sampleRate;
-    const env = Math.exp(-t * 8) * (1 - t / dur);
-    data[i] = (Math.random() * 2 - 1) * env * 0.3;
-  }
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass'; filter.frequency.value = 800;
-  filter.frequency.setValueAtTime(1200, audioCtx.currentTime);
-  filter.frequency.linearRampToValueAtTime(300, audioCtx.currentTime + dur);
-  src.connect(filter); filter.connect(audioCtx.destination);
-  src.start();
-}
-
-function playShimmer() {
-  if (!audioCtx) return;
-  const t0 = audioCtx.currentTime;
-  [523, 659, 784, 1047].forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.08, t0);
-    gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.8 + i * 0.1);
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.start(t0 + i * 0.05); osc.stop(t0 + 1 + i * 0.1);
-  });
-}
-
-function playRumble() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = 'sawtooth'; osc.frequency.value = 60;
-  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
-  osc.connect(gain); gain.connect(audioCtx.destination);
-  osc.start(); osc.stop(audioCtx.currentTime + 1.5);
-}
-
-function playIceCrack() {
-  if (!audioCtx) return;
-  const dur = 0.2;
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.03)) * 0.4;
-  }
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  const hp = audioCtx.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = 3000;
-  src.connect(hp); hp.connect(audioCtx.destination);
-  src.start();
-}
-
-function playWind() {
-  if (!audioCtx) return;
-  const dur = 2.0;
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    const t = i / audioCtx.sampleRate;
-    const mod = 0.5 + 0.5 * Math.sin(t * 3);
-    data[i] = (Math.random() * 2 - 1) * mod * Math.exp(-t * 0.8) * 0.15;
-  }
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  const bp = audioCtx.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 0.5;
-  src.connect(bp); bp.connect(audioCtx.destination);
-  src.start();
-}
-
-const SPELL_AUDIO = {
-  lumos: playShimmer, glacius: playIceCrack, ignis: playRumble,
-  levitas: playShimmer, nova: playRumble, tempest: playWind,
-};
+let debugMode = false;
+let fpsFrames = 0;
+let fpsTime = 0;
+let fps = 60;
 
 /* ═══════════════════════════════════════════════════════════════
-   NARRATOR — SpeechSynthesis
+   RENDERER
    ═══════════════════════════════════════════════════════════════ */
-let narrator = null;
-
-function initNarrator() {
-  if (!('speechSynthesis' in window)) return;
-  narrator = window.speechSynthesis;
-}
-
-function speak(text, onEnd) {
-  if (!narrator) { if (onEnd) onEnd(); return; }
-  narrator.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  const voices = narrator.getVoices();
-  const male = voices.find(v => /male/i.test(v.name) && /en/i.test(v.lang));
-  if (male) utt.voice = male;
-  utt.rate = 0.85; utt.pitch = 0.9;
-  utt.onstart = () => { pauseRecognition(); };
-  utt.onend = () => {
-    setTimeout(resumeRecognition, CONFIG.narratorResumeDelay);
-    if (onEnd) onEnd();
-  };
-  utt.onerror = () => {
-    setTimeout(resumeRecognition, CONFIG.narratorResumeDelay);
-    if (onEnd) onEnd();
-  };
-  narrator.speak(utt);
-}
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.8;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 /* ═══════════════════════════════════════════════════════════════
-   VOICE RECOGNITION — Web Speech API
-   ═══════════════════════════════════════════════════════════════ */
-let recognition = null;
-
-function initRecognition() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    showStatus('Press 1-6 for spells (voice not available in this browser)');
-    return;
-  }
-  recognition = new SR();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = 'en-US';
-
-  recognition.onresult = (e) => {
-    if (state.recognitionPaused) return;
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const transcript = e.results[i][0].transcript.toLowerCase().trim();
-      const words = transcript.split(/\s+/);
-      for (const word of words) {
-        // Direct match
-        if (SPELLS.includes(word)) { triggerSpell(word); return; }
-        // Alias match
-        if (SPELL_ALIASES[word]) { triggerSpell(SPELL_ALIASES[word]); return; }
-        // Substring match (min 4 chars)
-        if (word.length >= 4) {
-          for (const spell of SPELLS) {
-            if (spell.includes(word) || word.includes(spell.slice(0, 4))) {
-              triggerSpell(spell); return;
-            }
-          }
-          // Check aliases by substring
-          for (const [alias, spell] of Object.entries(SPELL_ALIASES)) {
-            if (alias.includes(word) || word.includes(alias.slice(0, 4))) {
-              triggerSpell(spell); return;
-            }
-          }
-        }
-      }
-    }
-  };
-
-  recognition.onend = () => {
-    if (!state.recognitionActive || state.recognitionPaused) return;
-    // Chrome bug: onend fires randomly. Watchdog restart.
-    if (state.watchdogRestarts < CONFIG.maxWatchdogRestarts) {
-      state.watchdogRestarts++;
-      setTimeout(() => {
-        try { recognition.start(); } catch (e) { /* already running */ }
-      }, CONFIG.watchdogDelay);
-    }
-  };
-
-  recognition.onerror = (e) => {
-    if (e.error === 'not-allowed') {
-      showStatus('Press 1-6 for spells (microphone access denied)');
-    } else if (e.error === 'network') {
-      showStatus('Press 1-6 for spells (voice recognition network error)');
-    }
-  };
-}
-
-function startRecognition() {
-  if (!recognition) return;
-  state.recognitionActive = true;
-  state.watchdogRestarts = 0;
-  try { recognition.start(); } catch (e) { /* already running */ }
-}
-
-function pauseRecognition() {
-  state.recognitionPaused = true;
-  if (recognition) try { recognition.stop(); } catch (e) { /* not running */ }
-}
-
-function resumeRecognition() {
-  state.recognitionPaused = false;
-  if (recognition && state.recognitionActive) {
-    state.watchdogRestarts = 0;
-    try { recognition.start(); } catch (e) { /* already running */ }
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   THREE.JS SCENE SETUP
+   SCENE + CAMERA
    ═══════════════════════════════════════════════════════════════ */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a1a);
-scene.fog = new THREE.FogExp2(0x0a0a1a, 0.08);
 
-const camera = new THREE.PerspectiveCamera(CONFIG.fov, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(...CONFIG.camPos);
-camera.lookAt(new THREE.Vector3(...CONFIG.camLookAt));
-
-let renderer, composer, bloomPass;
-
-function initRenderer() {
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  document.body.prepend(renderer.domElement);
-  renderer.domElement.style.position = 'fixed';
-  renderer.domElement.style.inset = '0';
-  renderer.domElement.style.zIndex = '0';
-
-  // Context loss handling
-  renderer.domElement.addEventListener('webglcontextlost', (e) => {
-    e.preventDefault();
-    showStatus('Magic lost its spark! Waiting to recover...');
-  });
-  renderer.domElement.addEventListener('webglcontextrestored', () => {
-    showStatus('');
-  });
-
-  // Post-processing
-  try {
-    composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      CONFIG.bloomStrength, CONFIG.bloomRadius, CONFIG.bloomThreshold
-    );
-    composer.addPass(bloomPass);
-  } catch (e) {
-    console.warn('Bloom unavailable, falling back to basic renderer', e);
-    composer = null;
-  }
-}
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 3, 8);
+camera.lookAt(0, 2, 0);
 
 /* ═══════════════════════════════════════════════════════════════
-   SCENE OBJECTS — Wizard's Study
+   ORBIT CONTROLS
    ═══════════════════════════════════════════════════════════════ */
-const sceneObjects = { candles: [], candleLights: [], books: [], owl: null, cauldron: null, cauldronLight: null, moonLight: null };
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.3;
+controls.minDistance = 2;
+controls.maxDistance = 15;
+controls.maxPolarAngle = Math.PI * 0.85;
+controls.target.set(0, 2, 0);
 
-function buildScene() {
-  // Floor
-  const floorGeo = new THREE.PlaneGeometry(8, 8);
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.95, metalness: 0.05 });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
-  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
-  scene.add(floor);
+/* ═══════════════════════════════════════════════════════════════
+   POST-PROCESSING
+   ═══════════════════════════════════════════════════════════════ */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.0,   // strength
+  0.4,   // radius
+  0.7    // threshold
+);
+composer.addPass(bloomPass);
 
-  // Back wall
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.9 });
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(8, 5), wallMat);
-  backWall.position.set(0, 2.5, -3); backWall.receiveShadow = true;
-  scene.add(backWall);
+/* ═══════════════════════════════════════════════════════════════
+   LIGHTING
+   ═══════════════════════════════════════════════════════════════ */
+// Ambient
+const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.3);
+scene.add(ambientLight);
 
-  // Side walls
-  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(6, 5), wallMat);
-  leftWall.position.set(-4, 2.5, 0); leftWall.rotation.y = Math.PI / 2;
-  scene.add(leftWall);
-  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(6, 5), wallMat);
-  rightWall.position.set(4, 2.5, 0); rightWall.rotation.y = -Math.PI / 2;
-  scene.add(rightWall);
-
-  // Ceiling
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.95 }));
-  ceiling.position.y = 5; ceiling.rotation.x = Math.PI / 2;
-  scene.add(ceiling);
-
-  // Moonlit arched window (back wall, right side)
-  const windowFrame = new THREE.Mesh(
-    new THREE.TorusGeometry(0.6, 0.08, 8, 16, Math.PI),
-    new THREE.MeshStandardMaterial({ color: 0x333344 })
-  );
-  windowFrame.position.set(2, 3, -2.95); windowFrame.rotation.z = Math.PI;
-  scene.add(windowFrame);
-
-  // Window glow (emissive plane)
-  const windowGlow = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.2, 1.2),
-    new THREE.MeshStandardMaterial({ color: 0x223355, emissive: 0x223355, emissiveIntensity: 1.5, side: THREE.DoubleSide })
-  );
-  windowGlow.position.set(2, 3, -2.9);
-  scene.add(windowGlow);
-
-  // Moon
-  const moon = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 16, 16),
-    new THREE.MeshStandardMaterial({ color: 0xeeeeff, emissive: 0xaabbdd, emissiveIntensity: 1.8 })
-  );
-  moon.position.set(2, 3.3, -2.85);
-  scene.add(moon);
-
-  // Stars (tiny emissive dots in window)
-  for (let i = 0; i < 12; i++) {
-    const star = new THREE.Mesh(
-      new THREE.SphereGeometry(0.02, 4, 4),
-      new THREE.MeshStandardMaterial({ emissive: 0xffffff, emissiveIntensity: 2.0 + Math.random() })
-    );
-    star.position.set(2 + (Math.random() - 0.5) * 0.9, 2.5 + Math.random() * 1, -2.88);
-    scene.add(star);
+// 4 candle point lights
+const candleLightData = [
+  { pos: [-2, 3, -1] },
+  { pos: [2, 3, 1] },
+  { pos: [0, 4, -2] },
+  { pos: [-1, 2, 2] },
+];
+const candleLights = candleLightData.map((d, i) => {
+  const light = new THREE.PointLight(0xffaa44, 0.4, 6);
+  light.position.set(...d.pos);
+  // At least 2 cast shadows
+  if (i < 2) {
+    light.castShadow = true;
+    light.shadow.mapSize.width = 512;
+    light.shadow.mapSize.height = 512;
   }
-
-  // Moonlight (directional, the only shadow-casting light)
-  const moonLight = new THREE.DirectionalLight(0x4466aa, 0.8);
-  moonLight.position.set(2, 4, -1);
-  moonLight.castShadow = true;
-  moonLight.shadow.mapSize.width = 1024;
-  moonLight.shadow.mapSize.height = 1024;
-  moonLight.shadow.camera.near = 0.1;
-  moonLight.shadow.camera.far = 10;
-  moonLight.shadow.camera.left = -4; moonLight.shadow.camera.right = 4;
-  moonLight.shadow.camera.top = 4; moonLight.shadow.camera.bottom = -1;
-  scene.add(moonLight);
-  sceneObjects.moonLight = moonLight;
-
-  // Ambient
-  scene.add(new THREE.AmbientLight(0x111122, 0.3));
-
-  // Bookshelves (left wall)
-  buildBookshelf(-3.5, 0, -1, 0.4, 3.5, 2);
-  buildBookshelf(-3.5, 0, 1, 0.4, 3.5, 2);
-
-  // Floating candles
-  const candlePositions = [
-    [-1.5, 2.5, -1], [0, 2.8, -0.5], [1, 2.3, -1.5], [-0.5, 2.6, 0.5], [1.5, 2.4, 0]
-  ];
-  candlePositions.forEach(([x, y, z]) => buildCandle(x, y, z));
-
-  // Cauldron
-  buildCauldron(0, 0, -1);
-
-  // Owl
-  buildOwl(3, 2.2, -2);
-
-  // Table with scroll and quill
-  buildTable(-1, 0, 1);
-}
-
-function buildBookshelf(x, y, z, depth, height, width) {
-  const shelfMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.85 });
-  // Back
-  const back = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.05), shelfMat);
-  back.position.set(x + depth / 2, y + height / 2, z);
-  scene.add(back);
-  // Shelves
-  for (let sy = 0.8; sy < height; sy += 0.8) {
-    const shelf = new THREE.Mesh(new THREE.BoxGeometry(depth, 0.04, width), shelfMat);
-    shelf.position.set(x, y + sy, z); shelf.castShadow = true;
-    scene.add(shelf);
-    // Books on each shelf
-    let bx = -width / 2 + 0.08;
-    while (bx < width / 2 - 0.08) {
-      const bw = 0.04 + Math.random() * 0.06;
-      const bh = 0.3 + Math.random() * 0.35;
-      const colors = [0x8b1a1a, 0x1a3d6b, 0x2d5a27, 0x6b2d4a, 0x4a3b2a, 0x1a4a4a];
-      const book = new THREE.Mesh(
-        new THREE.BoxGeometry(bw, bh, depth * 0.8),
-        new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random() * colors.length)], roughness: 0.8 })
-      );
-      book.position.set(x, y + sy + bh / 2 + 0.02, z + bx);
-      scene.add(book);
-      sceneObjects.books.push(book);
-      bx += bw + 0.02;
-    }
-  }
-}
-
-function buildCandle(x, y, z) {
-  // Candle body (cylinder)
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.03, 0.04, 0.3, 8),
-    new THREE.MeshStandardMaterial({ color: 0xeeddbb, roughness: 0.7 })
-  );
-  body.position.set(x, y, z);
-  scene.add(body);
-
-  // Flame (layered semi-transparent)
-  const flameGeo = new THREE.SphereGeometry(0.04, 8, 8);
-  flameGeo.scale(1, 2, 1);
-  const flame = new THREE.Mesh(flameGeo,
-    new THREE.MeshStandardMaterial({ color: 0xffaa33, emissive: 0xff8800, emissiveIntensity: 2.5, transparent: true, opacity: 0.9 })
-  );
-  flame.position.set(x, y + 0.2, z);
-  scene.add(flame);
-
-  const flameCore = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 6, 6),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffcc, emissiveIntensity: 3.0, transparent: true, opacity: 0.8 })
-  );
-  flameCore.position.set(x, y + 0.2, z);
-  scene.add(flameCore);
-
-  // Point light
-  const light = new THREE.PointLight(0xff9944, 0.6, 4);
-  light.position.set(x, y + 0.25, z);
   scene.add(light);
+  return light;
+});
 
-  sceneObjects.candles.push({ body, flame, flameCore, baseY: y, baseIntensity: 0.6 });
-  sceneObjects.candleLights.push(light);
+// Moonlight (directional)
+const moonLight = new THREE.DirectionalLight(0x4466aa, 0.3);
+moonLight.position.set(3, 6, -4);
+moonLight.castShadow = true;
+moonLight.shadow.mapSize.width = 1024;
+moonLight.shadow.mapSize.height = 1024;
+moonLight.shadow.camera.near = 0.1;
+moonLight.shadow.camera.far = 20;
+moonLight.shadow.camera.left = -8;
+moonLight.shadow.camera.right = 8;
+moonLight.shadow.camera.top = 8;
+moonLight.shadow.camera.bottom = -2;
+scene.add(moonLight);
+
+/* ═══════════════════════════════════════════════════════════════
+   DUST MOTES — 80 particles via THREE.Points
+   ═══════════════════════════════════════════════════════════════ */
+const MOTE_COUNT = 80;
+const motePositions = new Float32Array(MOTE_COUNT * 3);
+const moteSpeeds = new Float32Array(MOTE_COUNT);
+const motePhases = new Float32Array(MOTE_COUNT);
+
+for (let i = 0; i < MOTE_COUNT; i++) {
+  motePositions[i * 3]     = (Math.random() - 0.5) * 8;   // x
+  motePositions[i * 3 + 1] = Math.random() * 5;             // y
+  motePositions[i * 3 + 2] = (Math.random() - 0.5) * 8;   // z
+  moteOpacities[i] = Math.random();
+  moteSpeeds[i] = 0.1 + Math.random() * 0.3;
+  motePhases[i] = Math.random() * Math.PI * 2;
 }
 
-function buildCauldron(x, y, z) {
-  // Iron rim (torus)
-  const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(0.35, 0.05, 8, 16),
-    new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9, metalness: 0.3 })
-  );
-  rim.position.set(x, y + 0.5, z); rim.rotation.x = Math.PI / 2;
-  scene.add(rim);
+const moteGeometry = new THREE.BufferGeometry();
+moteGeometry.setAttribute('position', new THREE.BufferAttribute(motePositions, 3));
 
-  // Body (sphere cut in half-ish via scale)
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(0.35, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85, metalness: 0.2 })
-  );
-  body.position.set(x, y + 0.5, z); body.rotation.x = Math.PI;
-  scene.add(body);
+const moteMaterial = new THREE.PointsMaterial({
+  color: 0xffdd88,
+  size: 0.04,
+  transparent: true,
+  opacity: 0.6,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
+});
 
-  // Green liquid surface
-  const liquid = new THREE.Mesh(
-    new THREE.CircleGeometry(0.3, 16),
-    new THREE.MeshStandardMaterial({ color: 0x33ff55, emissive: 0x22cc44, emissiveIntensity: 1.5, transparent: true, opacity: 0.8 })
-  );
-  liquid.position.set(x, y + 0.48, z); liquid.rotation.x = -Math.PI / 2;
-  scene.add(liquid);
+const motePoints = new THREE.Points(moteGeometry, moteMaterial);
+scene.add(motePoints);
 
-  // Green point light
-  const glow = new THREE.PointLight(0x33ff55, 0.5, 3);
-  glow.position.set(x, y + 0.6, z);
-  scene.add(glow);
+function updateMotes(time) {
+  const positions = moteGeometry.attributes.position.array;
+  for (let i = 0; i < MOTE_COUNT; i++) {
+    const i3 = i * 3;
+    // Slow drift upward
+    positions[i3 + 1] += moteSpeeds[i] * 0.003;
+    // Gentle horizontal sway
+    positions[i3] += Math.sin(time * 0.5 + motePhases[i]) * 0.001;
+    positions[i3 + 2] += Math.cos(time * 0.4 + motePhases[i]) * 0.001;
+    // Wrap around when too high
+    if (positions[i3 + 1] > 6) {
+      positions[i3 + 1] = -0.5;
+      positions[i3] = (Math.random() - 0.5) * 8;
+      positions[i3 + 2] = (Math.random() - 0.5) * 8;
+    }
+  }
+  moteGeometry.attributes.position.needsUpdate = true;
 
-  sceneObjects.cauldron = { rim, body, liquid, baseEmissive: 0x22cc44 };
-  sceneObjects.cauldronLight = glow;
-}
-
-function buildOwl(x, y, z) {
-  const owlGroup = new THREE.Group();
-
-  // Body
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(0.2, 12, 12),
-    new THREE.MeshStandardMaterial({ color: 0x553322, roughness: 0.9 })
-  );
-  body.scale.set(1, 1.3, 0.9);
-  owlGroup.add(body);
-
-  // Head
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.14, 12, 12),
-    new THREE.MeshStandardMaterial({ color: 0x664433, roughness: 0.9 })
-  );
-  head.position.y = 0.28;
-  owlGroup.add(head);
-
-  // Eyes
-  [-0.06, 0.06].forEach(ex => {
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 8, 8),
-      new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xcc8800, emissiveIntensity: 1.5 })
-    );
-    eye.position.set(ex, 0.3, 0.1);
-    owlGroup.add(eye);
-  });
-
-  // Perch
-  const perch = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8),
-    new THREE.MeshStandardMaterial({ color: 0x3d2b1f })
-  );
-  perch.rotation.z = Math.PI / 2;
-  perch.position.set(0, -0.2, 0);
-  owlGroup.add(perch);
-
-  owlGroup.position.set(x, y, z);
-  scene.add(owlGroup);
-  sceneObjects.owl = { group: owlGroup, head, blinkTimer: 0, turnTimer: 0, headBaseY: 0.28 };
-}
-
-function buildTable(x, y, z) {
-  const tableMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.85 });
-  // Top
-  const top = new THREE.Mesh(new THREE.BoxGeometry(1, 0.05, 0.6), tableMat);
-  top.position.set(x, y + 0.75, z); top.castShadow = true;
-  scene.add(top);
-  // Legs
-  [[-0.4, 0, -0.2], [0.4, 0, -0.2], [-0.4, 0, 0.2], [0.4, 0, 0.2]].forEach(([lx, _, lz]) => {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.05), tableMat);
-    leg.position.set(x + lx, y + 0.375, z + lz);
-    scene.add(leg);
-  });
-  // Scroll (cylinder)
-  const scroll = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.03, 0.03, 0.3, 8),
-    new THREE.MeshStandardMaterial({ color: 0xd4c5a0, roughness: 0.7 })
-  );
-  scroll.position.set(x, y + 0.8, z); scroll.rotation.z = Math.PI / 2;
-  scene.add(scroll);
-  // Quill (thin cone)
-  const quill = new THREE.Mesh(
-    new THREE.ConeGeometry(0.01, 0.25, 6),
-    new THREE.MeshStandardMaterial({ color: 0xeeddcc })
-  );
-  quill.position.set(x + 0.3, y + 0.82, z + 0.1); quill.rotation.z = 0.3;
-  scene.add(quill);
+  // Oscillating global opacity
+  moteMaterial.opacity = 0.4 + Math.sin(time * 0.8) * 0.2;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PARTICLE SYSTEM — Object pools
+   LOAD scene.glb
    ═══════════════════════════════════════════════════════════════ */
-class ParticlePool {
-  constructor(count, color, size) {
-    this.particles = [];
-    this.geo = new THREE.SphereGeometry(size, 4, 4);
-    this.defaultColor = color;
-    for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshStandardMaterial({
-        color, emissive: color, emissiveIntensity: 2.0,
-        transparent: true, opacity: 0
-      });
-      const mesh = new THREE.Mesh(this.geo, mat);
-      mesh.visible = false;
-      scene.add(mesh);
-      this.particles.push({ mesh, mat, life: 0, maxLife: 0, vx: 0, vy: 0, vz: 0, active: false });
-    }
-  }
-
-  spawn(x, y, z, vx, vy, vz, life, color) {
-    for (const p of this.particles) {
-      if (!p.active) {
-        p.mesh.position.set(x, y, z);
-        p.vx = vx; p.vy = vy; p.vz = vz;
-        p.life = life; p.maxLife = life;
-        p.active = true; p.mesh.visible = true;
-        p.mat.opacity = 1;
-        p.mesh.scale.setScalar(1);
-        if (color !== undefined) {
-          p.mat.color.set(color);
-          p.mat.emissive.set(color);
-        } else {
-          p.mat.color.set(this.defaultColor);
-          p.mat.emissive.set(this.defaultColor);
-        }
-        return p;
-      }
-    }
-    return null;
-  }
-
-  update(dt) {
-    for (const p of this.particles) {
-      if (!p.active) continue;
-      p.life -= dt;
-      if (p.life <= 0) {
-        p.active = false; p.mesh.visible = false;
-        continue;
-      }
-      const t = p.life / p.maxLife;
-      p.mesh.position.x += p.vx * dt;
-      p.mesh.position.y += p.vy * dt;
-      p.mesh.position.z += p.vz * dt;
-      p.mat.opacity = t;
-      p.mesh.scale.setScalar(t);
-    }
-  }
-
-  activeCount() {
-    return this.particles.filter(p => p.active).length;
-  }
-
-  killAll() {
-    for (const p of this.particles) {
-      p.active = false; p.mesh.visible = false;
-    }
-  }
-}
-
-let trailPool, spellPool, ambientPool;
-
-function initParticles() {
-  trailPool = new ParticlePool(CONFIG.trailPoolSize, 0xFFD700, 0.02);
-  spellPool = new ParticlePool(CONFIG.spellPoolSize, 0xFFD700, 0.025);
-  ambientPool = new ParticlePool(CONFIG.ambientPoolSize, 0xffdd88, 0.008);
-
-  // Seed ambient dust motes
-  for (let i = 0; i < CONFIG.ambientPoolSize; i++) {
-    ambientPool.spawn(
-      (Math.random() - 0.5) * 6, Math.random() * 4, (Math.random() - 0.5) * 4,
-      (Math.random() - 0.5) * 0.05, Math.random() * 0.02 + 0.01, (Math.random() - 0.5) * 0.05,
-      5 + Math.random() * 10
-    );
-  }
-}
-
-function respawnDust() {
-  // Keep dust motes alive by re-spawning dead ones
-  for (const p of ambientPool.particles) {
-    if (!p.active) {
-      ambientPool.spawn(
-        (Math.random() - 0.5) * 6, Math.random() * 0.5, (Math.random() - 0.5) * 4,
-        (Math.random() - 0.5) * 0.05, Math.random() * 0.02 + 0.01, (Math.random() - 0.5) * 0.05,
-        5 + Math.random() * 10
-      );
-    }
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   WAND DETECTION — Frame differencing on 160x120 canvas
-   ═══════════════════════════════════════════════════════════════ */
-let video = null, detectCanvas = null, detectCtx = null;
-
-async function initWandDetection() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 } }
-    });
-    video = document.createElement('video');
-    video.srcObject = stream; video.muted = true; video.playsInline = true;
-    await video.play();
-
-    detectCanvas = document.createElement('canvas');
-    detectCanvas.width = CONFIG.detectW; detectCanvas.height = CONFIG.detectH;
-    detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
-
-    state.calibrating = true; state.calibrationFrame = 0;
-    $wandStatus.textContent = 'Calibrating wand detection...';
-  } catch (e) {
-    console.warn('Camera unavailable:', e);
-    $wandStatus.textContent = 'No camera. Press 1-6 for spells.';
-  }
-}
-
-const raycaster = new THREE.Raycaster();
-const ndcVec = new THREE.Vector2();
-const _trailSpawnPoint = new THREE.Vector3();
-const _trailDir = new THREE.Vector3();
-
-function detectWand() {
-  if (!video || !detectCtx) return;
-  const t0 = performance.now();
-
-  try {
-    detectCtx.drawImage(video, 0, 0, CONFIG.detectW, CONFIG.detectH);
-    const frame = detectCtx.getImageData(0, 0, CONFIG.detectW, CONFIG.detectH);
-    const data = frame.data;
-
-    if (state.calibrating) {
-      state.calibrationFrame++;
-      if (state.calibrationFrame >= CONFIG.calibrationFrames) {
-        state.bgFrame = new Uint8ClampedArray(data);
-        state.prevFrame = new Uint8ClampedArray(data);
-        state.calibrating = false;
-        $wandStatus.textContent = 'Wave your wand...';
-      } else {
-        state.prevFrame = new Uint8ClampedArray(data);
-      }
-      return;
-    }
-
-    if (!state.prevFrame) { state.prevFrame = new Uint8ClampedArray(data); return; }
-
-    // Frame difference
-    let maxDiff = 0, maxX = 0, maxY = 0;
-    let totalMotion = 0;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const dr = Math.abs(data[i] - state.prevFrame[i]);
-      const dg = Math.abs(data[i + 1] - state.prevFrame[i + 1]);
-      const db = Math.abs(data[i + 2] - state.prevFrame[i + 2]);
-      const diff = dr + dg + db;
-
-      if (diff > CONFIG.motionThreshold * 3) {
-        totalMotion++;
-        if (diff > maxDiff) {
-          maxDiff = diff;
-          const px = (i / 4) % CONFIG.detectW;
-          const py = Math.floor((i / 4) / CONFIG.detectW);
-          maxX = px; maxY = py;
-        }
-      }
-    }
-
-    state.prevFrame.set(data);
-
-    // Motion confidence: need enough pixels moving but not too many (whole-frame motion)
-    const motionRatio = totalMotion / (CONFIG.detectW * CONFIG.detectH);
-    const confident = motionRatio > 0.005 && motionRatio < 0.3 && maxDiff > CONFIG.motionThreshold * 6;
-
-    if (confident) {
-      // Mirror X and map to NDC
-      const nx = -((maxX / CONFIG.detectW) * 2 - 1);
-      const ny = -((maxY / CONFIG.detectH) * 2 - 1);
-      state.wandX = nx; state.wandY = ny;
-      state.wandDetected = true;
-      state.wandLostTimer = 0;
-      $wandStatus.textContent = 'Wand detected';
-    } else {
-      state.wandLostTimer++;
-      if (state.wandLostTimer > 150) { // ~2.5s at 60fps
-        state.wandDetected = false;
-        $wandStatus.textContent = 'Wave your wand...';
-      }
-    }
-  } catch (e) {
-    console.warn('Wand detection error:', e);
-  }
-
-  state.detectMs = performance.now() - t0;
-}
-
-function spawnWandTrail() {
-  if (!state.wandDetected || !state.started) return;
-
-  ndcVec.set(state.wandX, state.wandY);
-  raycaster.setFromCamera(ndcVec, camera);
-  _trailDir.copy(raycaster.ray.direction).multiplyScalar(2.0);
-  _trailSpawnPoint.copy(raycaster.ray.origin).add(_trailDir);
-
-  const count = state.degradeLevel > 1 ? Math.ceil(CONFIG.trailPerFrame / 2) : CONFIG.trailPerFrame;
-  for (let i = 0; i < count; i++) {
-    trailPool.spawn(
-      _trailSpawnPoint.x + (Math.random() - 0.5) * 0.08,
-      _trailSpawnPoint.y + (Math.random() - 0.5) * 0.08,
-      _trailSpawnPoint.z + (Math.random() - 0.5) * 0.08,
-      (Math.random() - 0.5) * 0.3,
-      (Math.random() - 0.5) * 0.3 + 0.1,
-      (Math.random() - 0.5) * 0.3,
-      CONFIG.trailLifetime * (0.8 + Math.random() * 0.4)
-    );
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   SPELL EFFECTS — DRY pattern with cleanup
-   ═══════════════════════════════════════════════════════════════ */
-function triggerSpell(name) {
-  const now = Date.now();
-  if (state.activeSpell) return;
-  if (now - state.lastCastTime < CONFIG.castDebounce) return;
-
-  state.lastCastTime = now;
-  state.activeSpell = name;
-
-  // Visual feedback
-  $spellDisplay.textContent = name.toUpperCase();
-  $spellDisplay.style.opacity = '1';
-  $ariaLive.textContent = `${name.toUpperCase()} spell cast!`;
-  setTimeout(() => { $spellDisplay.style.opacity = '0'; }, 1500);
-
-  // Audio
-  playWhoosh();
-  if (SPELL_AUDIO[name]) setTimeout(SPELL_AUDIO[name], 200);
-
-  // Narrator (100ms before visual to account for synthesis latency)
-  speak(SPELL_VOICES[name]);
-
-  // Apply spell effect
-  const cleanup = SPELL_EFFECTS[name]();
-  state.spellCleanup = cleanup;
-
-  // Cooldown ring
-  startCooldown();
-
-  // Unwind after duration
-  setTimeout(() => {
-    try { if (cleanup) cleanup(); } catch (e) { console.warn('Spell cleanup error:', e); }
-    state.activeSpell = null;
-    state.spellCleanup = null;
-  }, CONFIG.spellDuration);
-}
-
-const SPELL_EFFECTS = {
-  lumos() {
-    // All candles blaze 3x brighter, golden particles
-    const origIntensities = sceneObjects.candleLights.map(l => l.intensity);
-    sceneObjects.candleLights.forEach(l => { l.intensity = l.intensity * 3; });
-    sceneObjects.candles.forEach(c => {
-      c.flame.material.emissiveIntensity = 5.0;
-      c.flameCore.material.emissiveIntensity = 6.0;
-    });
-
-    // Corner lights
-    const cornerLights = [];
-    [[-3, 2, -2], [3, 2, -2], [-3, 2, 2], [3, 2, 2]].forEach(([x, y, z]) => {
-      const pl = new THREE.PointLight(0xFFD700, 0.8, 5);
-      pl.position.set(x, y, z); scene.add(pl); cornerLights.push(pl);
-    });
-
-    // Golden particle burst
-    for (let i = 0; i < 80; i++) {
-      spellPool.spawn(0, 1.5, 0,
-        (Math.random() - 0.5) * 3, Math.random() * 2 + 1, (Math.random() - 0.5) * 3,
-        1.5 + Math.random(), 0xFFD700
-      );
-    }
-
-    return () => {
-      sceneObjects.candleLights.forEach((l, i) => { l.intensity = origIntensities[i]; });
-      sceneObjects.candles.forEach(c => {
-        c.flame.material.emissiveIntensity = 2.5;
-        c.flameCore.material.emissiveIntensity = 3.0;
-      });
-      cornerLights.forEach(l => { scene.remove(l); });
-    };
-  },
-
-  glacius() {
-    // Warm lights dim to cold blue, cauldron freezes
-    const origColors = sceneObjects.candleLights.map(l => l.color.clone());
-    sceneObjects.candleLights.forEach(l => { l.color.set(0x6688cc); l.intensity *= 0.5; });
-
-    const origCauldronEmissive = sceneObjects.cauldron.liquid.material.emissive.clone();
-    sceneObjects.cauldron.liquid.material.emissive.set(0x88ccff);
-    sceneObjects.cauldron.liquid.material.color.set(0xaaddff);
-    sceneObjects.cauldronLight.color.set(0x88ccff);
-
-    // Frost particles
-    for (let i = 0; i < 100; i++) {
-      spellPool.spawn(
-        (Math.random() - 0.5) * 4, Math.random() * 0.5, (Math.random() - 0.5) * 3,
-        (Math.random() - 0.5) * 0.5, Math.random() * 0.3, (Math.random() - 0.5) * 0.5,
-        2 + Math.random() * 2, 0xaaddff
-      );
-    }
-
-    return () => {
-      sceneObjects.candleLights.forEach((l, i) => {
-        l.color.copy(origColors[i]); l.intensity = sceneObjects.candles[i]?.baseIntensity || 0.6;
-      });
-      sceneObjects.cauldron.liquid.material.emissive.copy(origCauldronEmissive);
-      sceneObjects.cauldron.liquid.material.color.set(0x33ff55);
-      sceneObjects.cauldronLight.color.set(0x33ff55);
-    };
-  },
-
-  ignis() {
-    // Cauldron erupts orange/red particles, warm glow
-    sceneObjects.candleLights.forEach(l => { l.intensity *= 4; });
-    sceneObjects.candles.forEach(c => { c.flame.material.emissiveIntensity = 6.0; });
-
-    const warmLight = new THREE.PointLight(0xff6622, 1.0, 6);
-    warmLight.position.set(0, 1, -1); scene.add(warmLight);
-
-    // Eruption particles from cauldron
-    const spawnCount = state.degradeLevel > 1 ? 100 : 200;
-    for (let i = 0; i < spawnCount; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 0.5 + Math.random() * 2;
-      spellPool.spawn(
-        (Math.random() - 0.5) * 0.3, 0.5, -1 + (Math.random() - 0.5) * 0.3,
-        Math.cos(angle) * 0.3, speed, Math.sin(angle) * 0.3,
-        1 + Math.random() * 2,
-        Math.random() > 0.5 ? 0xff4400 : 0xff8800
-      );
-    }
-
-    return () => {
-      sceneObjects.candleLights.forEach((l, i) => {
-        l.intensity = sceneObjects.candles[i]?.baseIntensity || 0.6;
-      });
-      sceneObjects.candles.forEach(c => { c.flame.material.emissiveIntensity = 2.5; });
-      scene.remove(warmLight);
-    };
-  },
-
-  levitas() {
-    // Books float off shelves
-    const floatingBooks = [];
-    const booksToFloat = sceneObjects.books.slice(0, Math.min(8, sceneObjects.books.length));
-    const origPositions = booksToFloat.map(b => b.position.clone());
-    const origRotations = booksToFloat.map(b => b.rotation.clone());
-
-    booksToFloat.forEach(b => {
-      b._levTarget = b.position.y + 0.5 + Math.random() * 1.0;
-      b._levRotSpeed = (Math.random() - 0.5) * 2;
-      floatingBooks.push(b);
-    });
-
-    // Blue spiral particles
-    for (let i = 0; i < 60; i++) {
-      const angle = (i / 60) * Math.PI * 4;
-      spellPool.spawn(
-        Math.cos(angle) * 0.5, 0.5 + i * 0.03, Math.sin(angle) * 0.5 - 1,
-        Math.cos(angle) * 0.2, 0.5, Math.sin(angle) * 0.2,
-        2 + Math.random(), 0x4488ff
-      );
-    }
-
-    // Animate books upward in render loop
-    const animId = setInterval(() => {
-      floatingBooks.forEach(b => {
-        if (b.position.y < b._levTarget) b.position.y += 0.02;
-        b.rotation.y += b._levRotSpeed * 0.016;
-      });
-    }, 16);
-
-    return () => {
-      clearInterval(animId);
-      booksToFloat.forEach((b, i) => {
-        b.position.copy(origPositions[i]);
-        b.rotation.copy(origRotations[i]);
-      });
-    };
-  },
-
-  nova() {
-    // Ceiling fades to starfield, massive gold/white explosion
-    const origCeilColor = 0x111122;
-    const ceilMeshes = [];
-    scene.traverse(obj => {
-      if (obj.isMesh && obj.position.y === 5) {
-        obj.material.emissive = new THREE.Color(0x111133);
-        obj.material.emissiveIntensity = 0.5;
-        ceilMeshes.push(obj);
-      }
-    });
-
-    // 500+ gold/white particles (halved if degraded)
-    const count = state.degradeLevel > 1 ? 150 : 300;
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * Math.PI;
-      const speed = 1 + Math.random() * 3;
-      spellPool.spawn(0, 1.5, 0,
-        Math.sin(phi) * Math.cos(theta) * speed,
-        Math.sin(phi) * Math.sin(theta) * speed * 0.5 + 1,
-        Math.cos(phi) * speed,
-        1.5 + Math.random() * 2,
-        Math.random() > 0.3 ? 0xFFD700 : 0xffffff
-      );
-    }
-
-    // Golden room glow
-    const novaLight = new THREE.PointLight(0xFFD700, 2.0, 8);
-    novaLight.position.set(0, 2, 0); scene.add(novaLight);
-
-    return () => {
-      ceilMeshes.forEach(m => { m.material.emissiveIntensity = 0; });
-      scene.remove(novaLight);
-    };
-  },
-
-  tempest() {
-    // Candles blow out, room goes dark, wind particles
-    const origIntensities = sceneObjects.candleLights.map(l => l.intensity);
-    const origFlameScales = sceneObjects.candles.map(c => c.flame.scale.clone());
-
-    sceneObjects.candleLights.forEach(l => { l.intensity = 0; });
-    sceneObjects.candles.forEach(c => {
-      c.flame.scale.setScalar(0.01);
-      c.flameCore.scale.setScalar(0.01);
-    });
-
-    // Wind streaks (horizontal particles)
-    for (let i = 0; i < 80; i++) {
-      spellPool.spawn(
-        -3 + Math.random() * 6, 0.5 + Math.random() * 3, (Math.random() - 0.5) * 4,
-        3 + Math.random() * 4, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.3,
-        0.8 + Math.random() * 1.2, 0x8899aa
-      );
-    }
-
-    // Screen shake
-    const origCamPos = camera.position.clone();
-    const shakeId = setInterval(() => {
-      camera.position.x = origCamPos.x + (Math.random() - 0.5) * 0.04;
-      camera.position.y = origCamPos.y + (Math.random() - 0.5) * 0.02;
-    }, 16);
-
-    // Relight candles after 3s
-    const relightTimeout = setTimeout(() => {
-      sceneObjects.candleLights.forEach((l, i) => { l.intensity = origIntensities[i] * 0.3; });
-      sceneObjects.candles.forEach(c => { c.flame.scale.setScalar(0.5); c.flameCore.scale.setScalar(0.5); });
-    }, 3000);
-
-    return () => {
-      clearInterval(shakeId);
-      clearTimeout(relightTimeout);
-      camera.position.copy(origCamPos);
-      sceneObjects.candleLights.forEach((l, i) => { l.intensity = origIntensities[i]; });
-      sceneObjects.candles.forEach((c, i) => {
-        c.flame.scale.copy(origFlameScales[i]);
-        c.flameCore.scale.set(1, 1, 1);
-      });
-    };
-  },
-};
-
-/* ═══════════════════════════════════════════════════════════════
-   COOLDOWN INDICATOR
-   ═══════════════════════════════════════════════════════════════ */
-let cooldownStart = 0;
-
-function startCooldown() {
-  cooldownStart = Date.now();
-  $cooldown.style.opacity = '0.6';
-}
-
-function drawCooldown() {
-  if (!state.activeSpell) { $cooldown.style.opacity = '0'; return; }
-  const elapsed = Date.now() - cooldownStart;
-  const progress = Math.min(elapsed / CONFIG.spellDuration, 1);
-  const ctx = $cooldown.getContext('2d');
-  ctx.clearRect(0, 0, 80, 80);
-  ctx.beginPath();
-  ctx.arc(40, 40, 30, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-  ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3; ctx.stroke();
-  if (progress >= 1) $cooldown.style.opacity = '0';
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   SCENE ANIMATIONS
-   ═══════════════════════════════════════════════════════════════ */
-function animateScene(time, dt) {
-  // Candle bob + flicker
-  sceneObjects.candles.forEach((c, i) => {
-    if (!state.activeSpell) {
-      c.body.position.y = c.baseY + Math.sin(time * 1.5 + i * 1.2) * 0.03;
-      c.flame.position.y = c.baseY + 0.2 + Math.sin(time * 1.5 + i * 1.2) * 0.03;
-      c.flameCore.position.y = c.flame.position.y;
-      // Flicker
-      const flicker = 0.85 + Math.random() * 0.3;
-      sceneObjects.candleLights[i].intensity = c.baseIntensity * flicker;
+const loader = new GLTFLoader();
+
+function logMeshInfo(object) {
+  console.group('Scene meshes loaded:');
+  object.traverse((child) => {
+    if (child.isMesh) {
+      const verts = child.geometry?.attributes?.position?.count || 0;
+      console.log(`  ${child.name || '(unnamed)'} — ${verts} vertices`);
+      child.castShadow = true;
+      child.receiveShadow = true;
     }
   });
-
-  // Cauldron bubble
-  if (sceneObjects.cauldronLight) {
-    sceneObjects.cauldronLight.intensity = 0.4 + Math.sin(time * 3) * 0.15;
-  }
-
-  // Owl blink + head turn
-  if (sceneObjects.owl) {
-    const owl = sceneObjects.owl;
-    owl.blinkTimer += dt;
-    owl.turnTimer += dt;
-    if (owl.blinkTimer > 3 + Math.random() * 4) {
-      owl.head.scale.y = 0.1; // "blink"
-      setTimeout(() => { owl.head.scale.y = 1; }, 150);
-      owl.blinkTimer = 0;
-    }
-    owl.head.rotation.y = Math.sin(owl.turnTimer * 0.3) * 0.4;
-  }
+  console.groupEnd();
 }
 
+loader.load(
+  'scene.glb',
+  // onLoad
+  (gltf) => {
+    const model = gltf.scene;
+
+    // Enable shadows on all meshes and log info
+    logMeshInfo(model);
+
+    scene.add(model);
+
+    // Fit camera to model bounding box
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    // Adjust controls target to model center
+    controls.target.copy(center);
+    camera.position.set(center.x, center.y + maxDim * 0.3, center.z + maxDim * 0.8);
+    camera.lookAt(center);
+    controls.update();
+
+    console.log(`Model loaded. Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
+    console.log(`Center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
+
+    // Hide loading, show title
+    $loading.style.display = 'none';
+    $titleScreen.style.display = 'flex';
+
+    // Pre-render one frame so scene shows behind title
+    composer.render();
+  },
+  // onProgress
+  (xhr) => {
+    if (xhr.total > 0) {
+      const pct = Math.round((xhr.loaded / xhr.total) * 100);
+      $progressBar.style.width = pct + '%';
+    }
+  },
+  // onError
+  (error) => {
+    console.error('Failed to load scene.glb:', error);
+    $progressBar.parentElement.style.display = 'none';
+    $errorMsg.style.display = 'block';
+    $errorMsg.textContent = 'Could not load the magic room. Make sure scene.glb is in the same folder.';
+  }
+);
+
 /* ═══════════════════════════════════════════════════════════════
-   PERFORMANCE DEGRADATION
+   TITLE SCREEN — Click to dismiss
    ═══════════════════════════════════════════════════════════════ */
-function checkPerformance(dt) {
-  state.fpsFrames++;
-  state.fpsTime += dt;
-  if (state.fpsTime >= 1) {
-    state.fps = state.fpsTime > 0 ? state.fpsFrames / state.fpsTime : 60;
-    state.fpsFrames = 0; state.fpsTime = 0;
-
-    if (state.fps < CONFIG.degradeFpsThreshold) {
-      state.lowFpsCount++;
-      if (state.lowFpsCount >= 2 && state.degradeLevel === 0) {
-        // Level 1: disable shadows
-        renderer.shadowMap.enabled = false;
-        state.degradeLevel = 1;
-        console.log('Performance: disabled shadows');
-      } else if (state.lowFpsCount >= 4 && state.degradeLevel === 1) {
-        // Level 2: reduce bloom
-        if (bloomPass) bloomPass.strength = 0.4;
-        state.degradeLevel = 2;
-        console.log('Performance: reduced bloom');
-      }
-    } else {
-      state.lowFpsCount = Math.max(0, state.lowFpsCount - 1);
-    }
-  }
-}
+$titleScreen.addEventListener('click', () => {
+  $titleScreen.style.display = 'none';
+});
 
 /* ═══════════════════════════════════════════════════════════════
-   MAIN RENDER LOOP
+   ANIMATION LOOP
    ═══════════════════════════════════════════════════════════════ */
 const clock = new THREE.Clock();
 
@@ -1340,174 +355,67 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.1);
   const time = clock.getElapsedTime();
 
-  if (!state.started) return;
+  // Update controls
+  controls.update();
 
-  // Wand detection
-  detectWand();
-  spawnWandTrail();
+  // Flicker candle lights
+  candleLights.forEach((light, i) => {
+    light.intensity = 0.4 + Math.sin(time * 8 + i * 2.5) * 0.2 + Math.sin(time * 13 + i * 4) * 0.1;
+  });
 
-  // Scene animations
-  animateScene(time, dt);
-
-  // Particles
-  trailPool.update(dt);
-  spellPool.update(dt);
-  ambientPool.update(dt);
-  respawnDust();
-
-  // Cooldown
-  drawCooldown();
+  // Update dust motes
+  updateMotes(time);
 
   // Render
-  if (composer) {
-    composer.render();
-  } else {
-    renderer.render(scene, camera);
-  }
+  composer.render();
 
-  // Performance
-  checkPerformance(dt);
+  // FPS tracking
+  fpsFrames++;
+  fpsTime += dt;
+  if (fpsTime >= 1) {
+    fps = fpsFrames / fpsTime;
+    fpsFrames = 0;
+    fpsTime = 0;
+  }
 
   // Debug overlay
-  if (state.debugMode) {
-    $debugOverlay.innerHTML = `
-      FPS: ${state.fps.toFixed(0)}<br>
-      Trail: ${trailPool.activeCount()}<br>
-      Spell: ${spellPool.activeCount()}<br>
-      Ambient: ${ambientPool.activeCount()}<br>
-      Detect: ${state.detectMs.toFixed(1)}ms<br>
-      Threshold: ${CONFIG.motionThreshold}<br>
-      Degrade: ${state.degradeLevel}
-    `;
+  if (debugMode) {
+    $debugOverlay.innerHTML = `FPS: ${fps.toFixed(0)}`;
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   UI HELPERS
-   ═══════════════════════════════════════════════════════════════ */
-function showStatus(msg) {
-  $statusMsg.textContent = msg;
-  $statusMsg.style.opacity = msg ? '1' : '0';
-}
-
-function isMobile() {
-  return 'ontouchstart' in window && window.innerWidth < 1024;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   INITIALIZATION — 10-step sequence
-   ═══════════════════════════════════════════════════════════════ */
-
-// Step 1: Renderer
-initRenderer();
-
-// Step 2: Camera (already created above)
-
-// Step 3: Scene + lights
-buildScene();
-
-// Step 4: (Room geometry built in buildScene)
-
-// Step 5: (Interactive objects built in buildScene)
-
-// Step 6: Particles
-initParticles();
-
-// Hide loading, show title
-clearTimeout(loadTimer);
-$loading.style.display = 'none';
-$titleScreen.style.display = 'flex';
-
-// Step 7-9: Audio, Voice, SpeechRecognition (on user gesture)
-initNarrator();
-initRecognition();
-
-// Pre-render one frame so the scene shows behind the title screen
-if (composer) composer.render(); else renderer.render(scene, camera);
-
-// Mobile detection
-if (isMobile()) {
-  $touchBar.style.display = 'flex';
-  $spellHints.textContent = 'Tap a spell below, or press 1-6';
-}
-
-// "Start Magic" button handler (user gesture gate)
-$startBtn.addEventListener('click', async () => {
-  $titleScreen.style.display = 'none';
-  state.started = true;
-
-  // Step 8: Audio context (requires user gesture)
-  initAudio();
-
-  // Step 9: Wand detection (camera permission)
-  await initWandDetection();
-
-  // Step 10: Start recognition
-  startRecognition();
-
-  // Welcome narrator
-  speak('Welcome, young wizard. Wave your wand, and speak your spell.');
-});
-
-// Start render loop
 animate();
 
 /* ═══════════════════════════════════════════════════════════════
-   INPUT HANDLERS
+   RESIZE HANDLER
    ═══════════════════════════════════════════════════════════════ */
-
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (KEYBOARD_MAP[e.key]) {
-    triggerSpell(KEYBOARD_MAP[e.key]);
-  }
-  // Debug mode
-  if (e.key === 'd' || e.key === 'D') {
-    state.debugMode = !state.debugMode;
-    $debugOverlay.style.display = state.debugMode ? 'block' : 'none';
-  }
-  // Motion threshold adjustment
-  if (e.key === '+' || e.key === '=') {
-    CONFIG.motionThreshold = Math.min(CONFIG.motionThreshold + 5, 100);
-  }
-  if (e.key === '-') {
-    CONFIG.motionThreshold = Math.max(CONFIG.motionThreshold - 5, 5);
-  }
-});
-
-// Touch-to-cast buttons
-document.querySelectorAll('#touch-bar button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const spell = btn.dataset.spell;
-    if (spell) triggerSpell(spell);
-  });
-});
-
-// Window resize handler
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  if (composer) composer.setSize(window.innerWidth, window.innerHeight);
-  if (bloomPass) bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Fade spell hints after 10s (to 0.4, not 0 — kids need persistent guidance)
-setTimeout(() => {
-  $spellHints.style.opacity = '0.4';
-}, 10000);
-
-// Clean up camera stream on page unload
-window.addEventListener('beforeunload', () => {
-  if (video && video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
+/* ═══════════════════════════════════════════════════════════════
+   DEBUG MODE — Press D
+   ═══════════════════════════════════════════════════════════════ */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'd' || e.key === 'D') {
+    debugMode = !debugMode;
+    $debugOverlay.style.display = debugMode ? 'block' : 'none';
+    if (debugMode) {
+      // Re-log mesh names when entering debug mode
+      console.group('Debug: Scene mesh names');
+      scene.traverse((child) => {
+        if (child.isMesh) {
+          const verts = child.geometry?.attributes?.position?.count || 0;
+          console.log(`  ${child.name || '(unnamed)'} — ${verts} vertices`);
+        }
+      });
+      console.groupEnd();
+    }
   }
 });
-
-// Load voices (some browsers load async)
-if ('speechSynthesis' in window) {
-  window.speechSynthesis.onvoiceschanged = () => { /* voices loaded */ };
-}
 
 </script>
 </body>
