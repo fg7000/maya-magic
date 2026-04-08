@@ -2,6 +2,30 @@
 
 Camera-based spell-casting app for kids. Python 3.9+, OpenCV, Pygame, SpeechRecognition, pyttsx3.
 
+## Architecture
+
+Single-file app (`main.py`). Hybrid wand detection: MOG2 background subtraction (primary) + motion-trail tracking (fallback). Speech recognition runs in daemon thread, communicates via `queue.Queue`. Pygame renders fullscreen at 30fps target.
+
+## Key Files
+
+- `main.py` - entire app (detection, particles, voice, UI)
+- `generate_voices.py` - one-time WAV generation via pyttsx3
+- `setup.sh` - install + generate + launch
+- `tests/test_gestures.py` - 50 unit tests
+
+## Running Tests
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+## Running the App
+
+```bash
+python3 main.py --windowed  # windowed mode
+python3 main.py             # fullscreen
+```
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
