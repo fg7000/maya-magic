@@ -1,25 +1,37 @@
 # Maya Magic
 
-**Camera-based spell-casting for kids.** Wave any stick in front of your webcam, say a spell name, and watch fullscreen magical particle effects explode on screen. A wizard voice guides the whole experience.
+**Browser-based spell-casting for kids.** Open a URL in Chrome, wave any stick in front of your webcam, say a spell name, and watch a cinematic 3D wizard's study transform with magical effects. A wizard voice narrates the whole experience.
 
-Think Universal Studios wand experience, but free, open-source, and works with any stick in your living room.
+Think Universal Studios wand experience, but free, open-source, and runs in your browser with zero install.
 
-## Quick Start
+## Try It
+
+**[https://fg7000.github.io/maya-magic/](https://fg7000.github.io/maya-magic/)**
+
+Or clone and open locally:
 
 ```bash
 git clone https://github.com/fg7000/maya-magic.git
 cd maya-magic
-bash setup.sh
+open index.html   # macOS
+# or: xdg-open index.html   # Linux
+# or: start index.html       # Windows
 ```
 
-That's it. The setup script installs dependencies, generates wizard voice files, and launches the app.
+Works on `file://` in Chrome (CDN imports load over HTTPS). If your browser blocks it, use a local server:
+
+```bash
+python3 -m http.server 8000
+# then open http://localhost:8000
+```
 
 ## How It Works
 
-1. The webcam detects any stick-shaped object using background subtraction (OpenCV)
-2. The wand tip is tracked in real-time with golden particle trails
-3. Say a spell name out loud (or press keys 1-6) to cast spells
-4. Fullscreen particle effects + wizard voice respond
+1. Click **Start Magic** to grant camera + microphone access
+2. A 3D wizard's study appears: floating candles, bubbling cauldron, blinking owl, moonlit window
+3. Wave any stick (wand, pencil, spatula) in front of your webcam. A golden particle trail follows.
+4. Say a spell name out loud (or press keys 1-6) to cast spells
+5. The entire 3D scene transforms with each spell
 
 No special wand needed. No markers. No tape. Just grab a stick and go.
 
@@ -27,86 +39,56 @@ No special wand needed. No markers. No tape. Just grab a stick and go.
 
 | Key | Spell | Effect |
 |-----|-------|--------|
-| 1 | **Lumos** | Radial burst of white/yellow light |
-| 2 | **Nova** | Rainbow explosion |
-| 3 | **Glacius** | Blue snowfall |
-| 4 | **Ignis** | Rising flames |
-| 5 | **Levitas** | Purple spiral |
-| 6 | **Tempest** | Cyan storm |
+| 1 | **Lumos** | Every candle blazes bright, golden particles explode, room fills with light |
+| 2 | **Glacius** | Room freezes cold blue, cauldron turns to ice, frost particles spread |
+| 3 | **Ignis** | Cauldron erupts with fire, orange glow fills the room, embers float |
+| 4 | **Levitas** | Books float off shelves, blue particles spiral upward |
+| 5 | **Nova** | Massive gold/white particle explosion, ceiling becomes starfield |
+| 6 | **Tempest** | Candles blow out, room goes dark, wind streaks across screen |
 
 ## Controls
 
 | Key | Action |
 |-----|--------|
-| ESC | Quit |
 | 1-6 | Cast spells |
-| D | Toggle debug overlay |
+| D | Toggle debug overlay (FPS, particles, wand detection timing) |
+| +/- | Adjust wand detection sensitivity |
+
+On mobile/tablet: tap the spell icons at the bottom of the screen.
 
 ## Requirements
 
-- Python 3.9+
+- **Chrome or Edge** (desktop, for full experience with camera + voice)
 - Webcam
 - Microphone (optional, for voice commands)
-- Internet connection (optional, for speech recognition via Google API)
+- Any stick-shaped object for your wand
 
-### Dependencies
+Safari and Firefox: WebGL and keyboard spells work. Voice recognition may not (Web Speech API limitation). Keyboard shortcuts 1-6 always work.
 
-- **OpenCV** - camera capture and wand detection
-- **Pygame** - fullscreen display, particles, audio
-- **SpeechRecognition** - voice command detection (requires internet)
-- **pyttsx3** - offline wizard voice generation
-- **PyAudio** - microphone access
+## Architecture
 
-## Platform Notes
+Single `index.html` file (~2000 lines). Three.js r168 + UnrealBloomPass loaded from jsDelivr CDN. No build step, no npm, no bundler, no server required.
 
-### macOS
-- First run requires granting **camera** and **microphone** access in System Preferences > Privacy & Security
-- Python/Terminal must be in the allowed apps list
+- **Rendering:** Three.js WebGLRenderer with EffectComposer (RenderPass + UnrealBloomPass)
+- **Wand detection:** Frame differencing on a 160x120 downscaled canvas, mapped to 3D via Raycaster
+- **Voice:** Web Speech API (SpeechRecognition) with fuzzy matching for kid mispronunciations
+- **Audio:** All sounds procedurally generated via Web Audio API (no audio files)
+- **Narrator:** SpeechSynthesis API with duplex policy (pauses recognition during narration)
 
-### Linux
-- Install espeak for voice generation: `sudo apt install espeak`
-- Camera works via V4L2 (usually out of the box)
-- You may need: `sudo apt install python3-pyaudio`
+## Privacy
 
-### Windows
-- Best-effort support
-- PyAudio may require manual install of PortAudio binaries
-
-## Running in Windowed Mode
-
-For debugging or multi-monitor setups:
-
-```bash
-python main.py --windowed
-```
-
-## Offline Mode
-
-Voice commands require internet (Google Speech API). Without internet, the app works perfectly with keyboard shortcuts (keys 1-6). The keyboard hint appears automatically when speech recognition is unavailable.
-
-## How Detection Works
-
-Maya Magic uses a hybrid detection approach:
-
-1. **Primary: Background Subtraction (MOG2)** - Detects moving objects against a relatively stable background. Filters for elongated shapes (sticks) by aspect ratio.
-
-2. **Fallback: Motion Trail** - When the primary detector can't find an elongated shape for 30+ frames, it switches to tracking the fastest-moving point in frame. Kids wave wands in big arcs, so the tip is usually the fastest thing moving.
-
-The child never knows which detector is active. A small indicator in the corner shows the mode (+ for primary, * for fallback) for debugging.
+Your camera feed is processed entirely on your device. It never leaves your browser. Voice recognition uses your browser's built-in speech service (Google's servers in Chrome). No data is collected or sent by this app.
 
 ## Project Structure
 
 ```
 maya-magic/
-  main.py              # The whole app
-  generate_voices.py   # One-time voice WAV generation
-  setup.sh             # Install + generate voices + launch
-  requirements.txt     # Python dependencies
+  index.html           # The entire app
   README.md            # This file
-  LICENSE              # MIT
   CLAUDE.md            # Project context for Claude Code
-  tests/
-    test_gestures.py   # Unit tests (50 tests)
+  LICENSE              # MIT
+  .github/workflows/
+    pages.yml          # GitHub Pages deploy on push to webgl
 ```
 
 ## License
