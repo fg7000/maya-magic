@@ -2,6 +2,17 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.7.0] - 2026-04-09
+
+### Fixed
+- Narrator no longer blocks speech recognition: removed all wand detection voice lines ("I see your wand") that paused listening via duplex policy
+- Welcome line shortened to one sentence so recognition starts listening sooner
+- After narrator finishes any line, 500ms delay then force-restart recognition to ensure mic is live
+- Idle spell hint timer increased from 30s to 60s to reduce narrator interruptions
+
+### Changed
+- Recognition start/stop events now logged to console for debugging duplex timing
+
 ## [0.2.6.0] - 2026-04-09
 
 ### Added
