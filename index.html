@@ -79,6 +79,37 @@ canvas#scene { position: fixed; inset: 0; z-index: 0; display: block; }
 }
 #wand-status.active { color: #4f4; opacity: 0.8; }
 #wand-status.denied { color: #f64; opacity: 0.8; }
+
+/* ═══════════════════════════════════════════════════════════════
+   SPELL HINT BAR
+   ═══════════════════════════════════════════════════════════════ */
+#spell-hints {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 200; font-size: 13px; color: #c8a86e; font-family: Georgia, serif;
+  opacity: 0.8; pointer-events: none; text-align: center;
+  transition: opacity 2s ease;
+  text-shadow: 0 0 8px rgba(0,0,0,0.8);
+}
+#spell-hints.faded { opacity: 0.2; }
+
+/* ═══════════════════════════════════════════════════════════════
+   COOLDOWN INDICATOR
+   ═══════════════════════════════════════════════════════════════ */
+#cooldown-indicator {
+  position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
+  z-index: 200; width: 36px; height: 36px;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.3s;
+}
+#cooldown-indicator.active { opacity: 0.8; }
+#cooldown-indicator svg { width: 100%; height: 100%; }
+#cooldown-indicator circle.bg { fill: none; stroke: rgba(200,168,110,0.2); stroke-width: 3; }
+#cooldown-indicator circle.fg {
+  fill: none; stroke: #c8a86e; stroke-width: 3;
+  stroke-dasharray: 100.53; stroke-dashoffset: 100.53;
+  transform: rotate(-90deg); transform-origin: center;
+  transition: stroke-dashoffset 0.1s linear;
+}
 </style>
 
 <script type="importmap">
@@ -113,6 +144,17 @@ canvas#scene { position: fixed; inset: 0; z-index: 0; display: block; }
 
 <!-- Wand status indicator -->
 <div id="wand-status"></div>
+
+<!-- Spell hint bar -->
+<div id="spell-hints">Say: Lumos · Glacius · Ignis · Levitas · Nova · Tempest &nbsp;|&nbsp; or press 1-6</div>
+
+<!-- Cooldown indicator -->
+<div id="cooldown-indicator">
+  <svg viewBox="0 0 36 36">
+    <circle class="bg" cx="18" cy="18" r="16"/>
+    <circle class="fg" cx="18" cy="18" r="16"/>
+  </svg>
+</div>
 
 <script type="module">
 /* ═══════════════════════════════════════════════════════════════
@@ -175,6 +217,30 @@ const SUM_THRESHOLD = 90;    // sum of abs diffs across RGB
 const MOTION_MIN = 0.002;    // minimum motion ratio to register a wand
 const EMA_ALPHA = 0.4;       // smoothing factor
 const $wandStatus = document.getElementById('wand-status');
+
+// Spell & voice state
+let recognition = null;
+let speaking = false;
+const speechQueue = [];
+let audioCtx = null;
+let lastSpellTime = 0;
+const SPELL_COOLDOWN = 5000;
+let spellCount = 0;
+const spellState = { active: false, type: null, startTime: 0, originalValues: {}, tempObjects: [] };
+let candleIntensityMultiplier = 1.0;
+let candleColorOverride = null;
+let meshByName = {};
+let wandPresent = false;
+let wandPresentTime = 0;
+let lastWandVoiceTime = 0;
+let lastSpellVoiceTime = 0;
+let cameraShake = { active: false, intensity: 0, endTime: 0 };
+
+// UI refs
+const $spellHints = document.getElementById('spell-hints');
+const $cooldownIndicator = document.getElementById('cooldown-indicator');
+const $cooldownFg = document.querySelector('#cooldown-indicator circle.fg');
+const COOLDOWN_CIRCUMFERENCE = 2 * Math.PI * 16; // r=16
 
 /* ═══════════════════════════════════════════════════════════════
    RENDERER
@@ -478,6 +544,14 @@ loader.load(
 
     scene.add(model);
 
+    // Build mesh lookup for spell effects
+    model.traverse((child) => {
+      if (child.isMesh && child.name) {
+        meshByName[child.name] = child;
+      }
+    });
+    console.log(`Mesh catalog: ${Object.keys(meshByName).length} named meshes indexed for spell targeting`);
+
     // Scale model to ~10 units (native size is ~0.1 units)
     const rawBox = new THREE.Box3().setFromObject(model);
     const rawSize = rawBox.getSize(new THREE.Vector3());
@@ -571,7 +645,10 @@ function detectWand() {
   // motionRatio denominator is pixel count, NOT byte count (prior learning applied)
   const motionRatio = totalMotion / (WAND_W * WAND_H);
 
-  if (motionRatio < MOTION_MIN) return;   // too little motion, skip
+  if (motionRatio < MOTION_MIN) {
+    updateWandVoice(false);
+    return;   // too little motion, skip
+  }
 
   // Centroid of motion region
   const cx = sumX / totalMotion;
@@ -596,6 +673,8 @@ function detectWand() {
   for (let j = 0; j < count; j++) {
     spawnTrailParticle(worldPos);
   }
+
+  updateWandVoice(true);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -624,12 +703,19 @@ $titleScreen.addEventListener('click', () => {
       $wandStatus.textContent = 'Wand: Ready';
       $wandStatus.className = 'active';
       console.log('Wand detection active (160x120 frame differencing)');
+
+      // Start voice recognition + narrator welcome
+      startSpeechRecognition();
+      speak(VOICE_LINES.welcome);
     })
     .catch((err) => {
       console.warn('Camera denied or unavailable:', err.message);
       $wandStatus.textContent = 'Wand: Camera off';
       $wandStatus.className = 'denied';
       // Graceful degradation — app works without camera, use keyboard 1-6
+      // Still start voice recognition so voice spells work
+      startSpeechRecognition();
+      speak(VOICE_LINES.welcome);
     });
 });
 
@@ -637,6 +723,568 @@ window.addEventListener('beforeunload', () => {
   if (wandVideo && wandVideo.srcObject) {
     wandVideo.srcObject.getTracks().forEach(t => t.stop());
   }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   VOICE RECOGNITION — Web Speech API
+   ═══════════════════════════════════════════════════════════════ */
+function startSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn('Speech recognition not supported');
+    $wandStatus.textContent = 'Voice not supported — use keyboard 1-6';
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    const last = event.results[event.results.length - 1];
+    if (last.isFinal) {
+      const text = last[0].transcript.toLowerCase().trim();
+      console.log('[Speech heard]:', text);
+      matchSpell(text);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    console.warn('[Speech error]:', e.error);
+    if (e.error !== 'no-speech') {
+      setTimeout(() => { try { recognition.start(); } catch(ex) {} }, 500);
+    }
+  };
+
+  recognition.onend = () => {
+    if (!speaking) {
+      setTimeout(() => { try { recognition.start(); } catch(ex) {} }, 500);
+    }
+  };
+
+  try { recognition.start(); } catch(ex) {}
+  console.log('Speech recognition started');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPELL ALIASES & MATCHING — fuzzy match for kid mispronunciations
+   ═══════════════════════════════════════════════════════════════ */
+const SPELL_ALIASES = {
+  lumos:   ['lumos', 'loomis', 'luminous', 'lumas', 'lomos', 'loom us', 'loo mos'],
+  glacius: ['glacius', 'glassius', 'glassy us', 'glacier', 'glass see us', 'glayceus'],
+  ignis:   ['ignis', 'igneous', 'ignus', 'ignite', 'ig nis', 'ignas'],
+  levitas: ['levitas', 'levitate', 'levitus', 'elevator', 'lev it us'],
+  nova:    ['nova', 'no va', 'super nova', 'supernova', 'no vah'],
+  tempest: ['tempest', 'tempes', 'tempus', 'temp est', 'tempost'],
+};
+
+function matchSpell(text) {
+  for (const [spell, aliases] of Object.entries(SPELL_ALIASES)) {
+    for (const alias of aliases) {
+      if (text.includes(alias)) {
+        triggerSpell(spell);
+        return;
+      }
+    }
+  }
+  speak(VOICE_LINES.unknown);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NARRATOR — SpeechSynthesis with queue and duplex policy
+   ═══════════════════════════════════════════════════════════════ */
+const VOICE_LINES = {
+  welcome:   'Welcome to Maya Magic. Wave your wand and speak your spell.',
+  wandFound: 'Ah, I see your wand! Now, speak a spell!',
+  wandLost:  'Where did your wand go? Hold it up for me.',
+  lumos:     'Lumos! You command the light!',
+  glacius:   'Glacius! The frost obeys you!',
+  ignis:     'Ignis! Fire dances at your command!',
+  levitas:   'Levitas! Rise! You command the air!',
+  nova:      'Nova! A star is born from your wand!',
+  tempest:   'Tempest! The winds answer your call!',
+  unknown:   'That spell is unknown to me. Try Lumos or Glacius!',
+  hint:      'Try saying Lumos while waving your wand!',
+  streak3:   'Three spells! You are becoming a true sorcerer!',
+  streak5:   'Five spells! The magic council would be impressed!',
+};
+
+function speak(text, priority = false) {
+  if (priority && speaking) {
+    window.speechSynthesis.cancel();
+    speaking = false;
+  }
+  if (speaking) {
+    speechQueue.push(text);
+    return;
+  }
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  const male = voices.find(v => /daniel|james|english.*male/i.test(v.name))
+    || voices.find(v => /en/.test(v.lang));
+  if (male) utter.voice = male;
+  utter.rate = 0.85;
+  utter.pitch = 0.9;
+  utter.onstart = () => {
+    speaking = true;
+    if (recognition) try { recognition.stop(); } catch(ex) {}
+  };
+  utter.onend = () => {
+    speaking = false;
+    if (recognition) try { recognition.start(); } catch(ex) {}
+    if (speechQueue.length > 0) speak(speechQueue.shift());
+  };
+  speaking = true;
+  window.speechSynthesis.speak(utter);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AUDIO ENGINE — procedural whoosh via Web Audio API
+   ═══════════════════════════════════════════════════════════════ */
+function playWhoosh() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  const duration = 0.4;
+  const noise = audioCtx.createBufferSource();
+  const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (data.length * 0.3));
+  }
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(800, audioCtx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + duration);
+  filter.Q.value = 1.5;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+  noise.connect(filter).connect(gain).connect(audioCtx.destination);
+  noise.start();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPELL TRIGGER & COOLDOWN
+   ═══════════════════════════════════════════════════════════════ */
+function triggerSpell(spellName) {
+  const now = performance.now();
+  if (now - lastSpellTime < SPELL_COOLDOWN) return;
+  if (spellState.active) return;
+  lastSpellTime = now;
+  lastSpellVoiceTime = now;
+  spellCount++;
+  speak(VOICE_LINES[spellName], true);
+  playWhoosh();
+  activateSpell(spellName);
+  // Streak voice lines (delayed so they don't overlap the spell line)
+  if (spellCount === 3) setTimeout(() => speak(VOICE_LINES.streak3), 3000);
+  if (spellCount === 5) setTimeout(() => speak(VOICE_LINES.streak5), 3000);
+  // Start cooldown indicator
+  showCooldown();
+}
+
+function showCooldown() {
+  $cooldownIndicator.classList.add('active');
+  $cooldownFg.style.strokeDashoffset = COOLDOWN_CIRCUMFERENCE;
+  const startTime = performance.now();
+  function updateCooldown() {
+    const elapsed = performance.now() - startTime;
+    const progress = Math.min(elapsed / SPELL_COOLDOWN, 1);
+    $cooldownFg.style.strokeDashoffset = COOLDOWN_CIRCUMFERENCE * (1 - progress);
+    if (progress < 1) {
+      requestAnimationFrame(updateCooldown);
+    } else {
+      $cooldownIndicator.classList.remove('active');
+    }
+  }
+  requestAnimationFrame(updateCooldown);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPELL EFFECTS — 6 spells, each with activate + cleanup
+   ═══════════════════════════════════════════════════════════════ */
+function getMeshesByPattern(patterns) {
+  const results = [];
+  for (const [name, mesh] of Object.entries(meshByName)) {
+    const lower = name.toLowerCase();
+    for (const pat of patterns) {
+      if (lower.includes(pat.toLowerCase())) {
+        results.push(mesh);
+        break;
+      }
+    }
+  }
+  return results;
+}
+
+function spawnColoredParticle(worldPos, r, g, b) {
+  spawnTrailParticle(worldPos);
+  const idx = (trailHead - 1 + TRAIL_COUNT) % TRAIL_COUNT;
+  const i3 = idx * 3;
+  trailColors[i3] = r;
+  trailColors[i3 + 1] = g;
+  trailColors[i3 + 2] = b;
+}
+
+function activateSpell(spellName) {
+  spellState.active = true;
+  spellState.type = spellName;
+  spellState.startTime = performance.now();
+  spellState.originalValues = {};
+  spellState.tempObjects = [];
+
+  const orig = spellState.originalValues;
+  orig.bloomStrength = bloomPass.strength;
+  orig.candleMultiplier = candleIntensityMultiplier;
+  orig.candleColors = candleLights.map(l => l.color.getHex());
+
+  switch (spellName) {
+    case 'lumos': activateLumos(orig); break;
+    case 'glacius': activateGlacius(orig); break;
+    case 'ignis': activateIgnis(orig); break;
+    case 'levitas': activateLevitas(orig); break;
+    case 'nova': activateNova(orig); break;
+    case 'tempest': activateTempest(orig); break;
+  }
+}
+
+function activateLumos(orig) {
+  candleIntensityMultiplier = 3.0;
+  bloomPass.strength = 1.5;
+  // Emissive glow on chandeliers and glass lights
+  const meshes = getMeshesByPattern(['chandelier', 'glasslight']);
+  orig.lumosMeshes = meshes.map(m => {
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    return { mesh: m, origEmissive: mats.map(mt => mt.emissive ? mt.emissive.clone() : new THREE.Color(0)), origEmissiveIntensity: mats.map(mt => mt.emissiveIntensity || 0) };
+  });
+  for (const entry of orig.lumosMeshes) {
+    const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+    for (const mt of mats) {
+      if (mt.emissive) { mt.emissive.set(0xffd700); mt.emissiveIntensity = 1.0; }
+    }
+  }
+  // Gold particle burst
+  const center = new THREE.Vector3(0, 3, 0);
+  for (let i = 0; i < 200; i++) {
+    const pos = center.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5));
+    spawnColoredParticle(pos, 1.0, 0.84, 0.0);
+  }
+}
+
+function activateGlacius(orig) {
+  candleIntensityMultiplier = 0.15;
+  candleColorOverride = new THREE.Color(0x4488cc);
+  // Frost tint on walls, floors, curtains
+  const meshes = getMeshesByPattern(['stonewall', 'woodfloor', 'curtain']);
+  orig.glaciusMeshes = meshes.map(m => {
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    return { mesh: m, origColors: mats.map(mt => mt.color ? mt.color.clone() : new THREE.Color(1, 1, 1)) };
+  });
+  const frost = new THREE.Color(0x88aadd);
+  for (const entry of orig.glaciusMeshes) {
+    const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+    mats.forEach((mt, i) => {
+      if (mt.color) mt.color.lerp(frost, 0.4);
+    });
+  }
+  // Ice-blue particles drifting down
+  for (let i = 0; i < 100; i++) {
+    const pos = new THREE.Vector3((Math.random() - 0.5) * 6, 4 + Math.random() * 2, (Math.random() - 0.5) * 6);
+    spawnColoredParticle(pos, 0.53, 0.67, 0.87);
+  }
+}
+
+function activateIgnis(orig) {
+  candleIntensityMultiplier = 4.0;
+  // Temp orange point light at center
+  const fireLight = new THREE.PointLight(0xff6622, 2, 15);
+  fireLight.position.set(0, 2, 0);
+  scene.add(fireLight);
+  spellState.tempObjects.push(fireLight);
+  // Scale fire meshes
+  const fireMeshes = getMeshesByPattern(['fire01', 'fire02']);
+  orig.ignisMeshes = fireMeshes.map(m => ({ mesh: m, origScale: m.scale.clone() }));
+  for (const entry of orig.ignisMeshes) {
+    entry.mesh.scale.multiplyScalar(2);
+  }
+  // Orange-red particles shooting up from fire positions
+  for (const entry of orig.ignisMeshes) {
+    const worldPos = new THREE.Vector3();
+    entry.mesh.getWorldPosition(worldPos);
+    for (let i = 0; i < 150; i++) {
+      const pos = worldPos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.5, Math.random() * 2, (Math.random() - 0.5) * 0.5));
+      spawnColoredParticle(pos, 1.0, 0.27, 0.0);
+    }
+  }
+  // If no fire meshes found, spawn from center
+  if (fireMeshes.length === 0) {
+    for (let i = 0; i < 300; i++) {
+      const pos = new THREE.Vector3((Math.random() - 0.5) * 2, 1 + Math.random() * 3, (Math.random() - 0.5) * 2);
+      spawnColoredParticle(pos, 1.0, 0.27, 0.0);
+    }
+  }
+}
+
+function activateLevitas(orig) {
+  const meshes = getMeshesByPattern(['documents', 'cabinetsprops', 'prophecyorb']);
+  orig.levitasMeshes = meshes.map(m => ({
+    mesh: m, origPos: m.position.clone(), origRot: m.rotation.clone(),
+    floatOffset: 0
+  }));
+  // Light-blue particles spiraling up
+  for (let i = 0; i < 100; i++) {
+    const angle = (i / 100) * Math.PI * 4;
+    const r = 1.5;
+    const pos = new THREE.Vector3(Math.cos(angle) * r, 1 + (i / 100) * 4, Math.sin(angle) * r);
+    spawnColoredParticle(pos, 0.6, 0.8, 1.0);
+  }
+}
+
+function activateNova(orig) {
+  bloomPass.strength = 2.0;
+  candleIntensityMultiplier = 2.5;
+  // Camera shake
+  cameraShake = { active: true, intensity: 0.1, endTime: performance.now() + 500 };
+  // 500 gold + white particles exploding from center
+  const center = new THREE.Vector3(0, 3, 0);
+  for (let i = 0; i < 500; i++) {
+    const pos = center.clone().add(new THREE.Vector3(
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3
+    ));
+    if (Math.random() > 0.5) {
+      spawnColoredParticle(pos, 1.0, 0.84, 0.0); // gold
+    } else {
+      spawnColoredParticle(pos, 1.0, 1.0, 0.9); // white
+    }
+  }
+}
+
+function activateTempest(orig) {
+  candleIntensityMultiplier = 0.0;
+  // Camera shake (longer)
+  cameraShake = { active: true, intensity: 0.15, endTime: performance.now() + 1500 };
+  // Random rotation on curtains and documents
+  const meshes = getMeshesByPattern(['curtain', 'documents']);
+  orig.tempestMeshes = meshes.map(m => ({
+    mesh: m, origRot: m.rotation.clone()
+  }));
+  for (const entry of orig.tempestMeshes) {
+    entry.mesh.rotation.x += (Math.random() - 0.5) * 0.2;
+    entry.mesh.rotation.z += (Math.random() - 0.5) * 0.2;
+  }
+  // Fast horizontal white/gray streak particles
+  for (let i = 0; i < 200; i++) {
+    const pos = new THREE.Vector3(
+      (Math.random() - 0.5) * 8,
+      1 + Math.random() * 4,
+      (Math.random() - 0.5) * 8
+    );
+    const gray = 0.6 + Math.random() * 0.4;
+    spawnColoredParticle(pos, gray, gray, gray);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPELL UPDATE — called every frame during active spell
+   ═══════════════════════════════════════════════════════════════ */
+function updateSpell(dt) {
+  if (!spellState.active) return;
+  const elapsed = performance.now() - spellState.startTime;
+  const DURATION = 4000;
+  const REVERT = 1000;
+
+  if (elapsed > DURATION + REVERT) {
+    finalizeSpellRevert();
+    spellState.active = false;
+    return;
+  }
+
+  // Revert phase: lerp back to originals
+  if (elapsed > DURATION) {
+    const t = (elapsed - DURATION) / REVERT;
+    lerpToOriginals(t);
+  }
+
+  // Spell-specific per-frame updates
+  updateSpellEffects(elapsed);
+}
+
+function lerpToOriginals(t) {
+  const orig = spellState.originalValues;
+  // Bloom
+  bloomPass.strength = orig.bloomStrength + (bloomPass.strength - orig.bloomStrength) * (1 - t);
+  // Candle multiplier
+  candleIntensityMultiplier = candleIntensityMultiplier + (orig.candleMultiplier - candleIntensityMultiplier) * t;
+  // Candle color
+  if (candleColorOverride) {
+    const origColor = new THREE.Color(0xffaa44);
+    candleColorOverride.lerp(origColor, t);
+    if (t > 0.95) candleColorOverride = null;
+  }
+  // Glacius mesh colors
+  if (orig.glaciusMeshes) {
+    for (const entry of orig.glaciusMeshes) {
+      const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+      mats.forEach((mt, i) => {
+        if (mt.color && entry.origColors[i]) mt.color.lerp(entry.origColors[i], t);
+      });
+    }
+  }
+  // Lumos emissive
+  if (orig.lumosMeshes) {
+    for (const entry of orig.lumosMeshes) {
+      const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+      mats.forEach((mt, i) => {
+        if (mt.emissive && entry.origEmissive[i]) {
+          mt.emissive.lerp(entry.origEmissive[i], t);
+          mt.emissiveIntensity = mt.emissiveIntensity + (entry.origEmissiveIntensity[i] - mt.emissiveIntensity) * t;
+        }
+      });
+    }
+  }
+  // Ignis fire mesh scale
+  if (orig.ignisMeshes) {
+    for (const entry of orig.ignisMeshes) {
+      entry.mesh.scale.lerp(entry.origScale, t);
+    }
+  }
+  // Levitas positions
+  if (orig.levitasMeshes) {
+    for (const entry of orig.levitasMeshes) {
+      entry.mesh.position.lerp(entry.origPos, t);
+      entry.mesh.rotation.y += (entry.origRot.y - entry.mesh.rotation.y) * t;
+    }
+  }
+  // Tempest rotations
+  if (orig.tempestMeshes) {
+    for (const entry of orig.tempestMeshes) {
+      entry.mesh.rotation.x += (entry.origRot.x - entry.mesh.rotation.x) * t;
+      entry.mesh.rotation.z += (entry.origRot.z - entry.mesh.rotation.z) * t;
+    }
+  }
+  // Temp objects fade
+  for (const obj of spellState.tempObjects) {
+    if (obj.isLight) obj.intensity *= (1 - t);
+  }
+}
+
+function updateSpellEffects(elapsed) {
+  const type = spellState.type;
+  const orig = spellState.originalValues;
+
+  // Levitas: float objects upward during active phase
+  if (type === 'levitas' && elapsed < 4000 && orig.levitasMeshes) {
+    for (const entry of orig.levitasMeshes) {
+      entry.mesh.position.y += 0.01;
+      entry.mesh.rotation.y += 0.005;
+    }
+  }
+
+  // Tempest: candles fade back one at a time after 3s
+  if (type === 'tempest' && elapsed > 3000 && elapsed < 4000) {
+    const progress = (elapsed - 3000) / 1000;
+    const idx = Math.floor(progress * candleLights.length);
+    for (let i = 0; i <= idx && i < candleLights.length; i++) {
+      candleIntensityMultiplier = Math.max(candleIntensityMultiplier, (i + 1) / candleLights.length);
+    }
+  }
+
+  // Nova: intense bloom pulse in first 500ms
+  if (type === 'nova' && elapsed < 500) {
+    candleIntensityMultiplier = 2.5 + (1 - elapsed / 500) * 1.5;
+  }
+}
+
+function finalizeSpellRevert() {
+  const orig = spellState.originalValues;
+  bloomPass.strength = orig.bloomStrength;
+  candleIntensityMultiplier = orig.candleMultiplier;
+  candleColorOverride = null;
+  // Restore candle colors
+  candleLights.forEach((l, i) => l.color.setHex(orig.candleColors[i]));
+  // Restore Glacius mesh colors
+  if (orig.glaciusMeshes) {
+    for (const entry of orig.glaciusMeshes) {
+      const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+      mats.forEach((mt, i) => { if (mt.color && entry.origColors[i]) mt.color.copy(entry.origColors[i]); });
+    }
+  }
+  // Restore Lumos emissive
+  if (orig.lumosMeshes) {
+    for (const entry of orig.lumosMeshes) {
+      const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+      mats.forEach((mt, i) => {
+        if (mt.emissive && entry.origEmissive[i]) { mt.emissive.copy(entry.origEmissive[i]); mt.emissiveIntensity = entry.origEmissiveIntensity[i]; }
+      });
+    }
+  }
+  // Restore Ignis fire scale
+  if (orig.ignisMeshes) {
+    for (const entry of orig.ignisMeshes) entry.mesh.scale.copy(entry.origScale);
+  }
+  // Restore Levitas positions and rotations
+  if (orig.levitasMeshes) {
+    for (const entry of orig.levitasMeshes) {
+      entry.mesh.position.copy(entry.origPos);
+      entry.mesh.rotation.copy(entry.origRot);
+    }
+  }
+  // Restore Tempest rotations
+  if (orig.tempestMeshes) {
+    for (const entry of orig.tempestMeshes) entry.mesh.rotation.copy(entry.origRot);
+  }
+  // Remove temp objects
+  for (const obj of spellState.tempObjects) {
+    scene.remove(obj);
+    if (obj.dispose) obj.dispose();
+  }
+  spellState.tempObjects = [];
+  cameraShake = { active: false, intensity: 0, endTime: 0 };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WAND STATE VOICE TRIGGERS
+   ═══════════════════════════════════════════════════════════════ */
+function updateWandVoice(motionDetected) {
+  const now = performance.now();
+  const prevWandPresent = wandPresent;
+  wandPresent = motionDetected;
+
+  if (wandPresent && !prevWandPresent) {
+    wandPresentTime = now;
+    if (now - lastWandVoiceTime > 5000) {
+      speak(VOICE_LINES.wandFound);
+      lastWandVoiceTime = now;
+    }
+  }
+
+  if (!wandPresent && prevWandPresent) {
+    // Debounce: only announce lost after 3 seconds
+    setTimeout(() => {
+      if (!wandPresent && performance.now() - lastWandVoiceTime > 5000) {
+        speak(VOICE_LINES.wandLost);
+        lastWandVoiceTime = performance.now();
+      }
+    }, 3000);
+  }
+
+  // Hint after 15 seconds of wand present but no spell
+  if (wandPresent && now - wandPresentTime > 15000 && now - lastSpellVoiceTime > 15000) {
+    speak(VOICE_LINES.hint);
+    lastSpellVoiceTime = now;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPELL HINT BAR — fade after 10 seconds
+   ═══════════════════════════════════════════════════════════════ */
+let hintFadeTimer = setTimeout(() => $spellHints.classList.add('faded'), 10000);
+document.addEventListener('mousemove', () => {
+  $spellHints.classList.remove('faded');
+  clearTimeout(hintFadeTimer);
+  hintFadeTimer = setTimeout(() => $spellHints.classList.add('faded'), 10000);
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -655,9 +1303,11 @@ function animate() {
   // Wand detection (frame differencing → particle spawn)
   detectWand();
 
-  // Flicker candle lights
+  // Flicker candle lights (modulated by spell multiplier)
   candleLights.forEach((light, i) => {
-    light.intensity = 2.0 + Math.sin(time * 8 + i * 2.5) * 0.8 + Math.sin(time * 13 + i * 4) * 0.4;
+    const baseFlicker = 2.0 + Math.sin(time * 8 + i * 2.5) * 0.8 + Math.sin(time * 13 + i * 4) * 0.4;
+    light.intensity = baseFlicker * candleIntensityMultiplier;
+    if (candleColorOverride) light.color.copy(candleColorOverride);
   });
 
   // Update dust motes
@@ -666,8 +1316,29 @@ function animate() {
   // Update wand trail particles (fade, drift, shrink)
   updateTrailParticles(dt);
 
+  // Update active spell effects
+  updateSpell(dt);
+
+  // Camera shake (applied before render, removed after)
+  let shakeOffset = null;
+  if (cameraShake.active) {
+    if (performance.now() > cameraShake.endTime) {
+      cameraShake.active = false;
+    } else {
+      shakeOffset = new THREE.Vector3(
+        (Math.random() - 0.5) * cameraShake.intensity * 2,
+        (Math.random() - 0.5) * cameraShake.intensity * 2,
+        (Math.random() - 0.5) * cameraShake.intensity * 2
+      );
+      camera.position.add(shakeOffset);
+    }
+  }
+
   // Render
   composer.render();
+
+  // Remove camera shake offset after render
+  if (shakeOffset) camera.position.sub(shakeOffset);
 
   // FPS tracking
   fpsFrames++;
@@ -683,7 +1354,9 @@ function animate() {
     const activeParticles = trailAlphas.filter(a => a > 0).length;
     $debugOverlay.innerHTML = `FPS: ${fps.toFixed(0)}<br>` +
       `Wand: ${wandActive ? 'active' : 'off'}<br>` +
-      `Trail: ${activeParticles}/${TRAIL_COUNT}`;
+      `Trail: ${activeParticles}/${TRAIL_COUNT}<br>` +
+      `Spell: ${spellState.active ? spellState.type : 'none'}<br>` +
+      `Spells cast: ${spellCount}`;
   }
 }
 
@@ -718,19 +1391,11 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  // Keyboard 1-6: test particle bursts at random 3D positions
+  // Keyboard 1-6: cast spells
   const keyNum = parseInt(e.key);
   if (keyNum >= 1 && keyNum <= 6) {
-    const burstPos = new THREE.Vector3(
-      (Math.random() - 0.5) * 4,
-      1 + Math.random() * 3,
-      (Math.random() - 0.5) * 4
-    );
-    const burstCount = 30 + Math.floor(Math.random() * 20);
-    for (let j = 0; j < burstCount; j++) {
-      spawnTrailParticle(burstPos);
-    }
-    console.log(`Test burst (key ${keyNum}): ${burstCount} particles at (${burstPos.x.toFixed(1)}, ${burstPos.y.toFixed(1)}, ${burstPos.z.toFixed(1)})`);
+    const spells = ['lumos', 'glacius', 'ignis', 'levitas', 'nova', 'tempest'];
+    triggerSpell(spells[keyNum - 1]);
   }
 });
 
