@@ -767,18 +767,19 @@ function startSpeechRecognition() {
   recognition.onerror = (e) => {
     console.warn('[Speech error]:', e.error);
     if (e.error !== 'no-speech') {
-      setTimeout(() => { try { recognition.start(); } catch(ex) {} }, 500);
+      setTimeout(() => { console.log('[recognition] restarting after error'); try { recognition.start(); } catch(ex) {} }, 500);
     }
   };
 
   recognition.onend = () => {
+    console.log('[recognition] onend fired, speaking=' + speaking);
     if (!speaking) {
-      setTimeout(() => { try { recognition.start(); } catch(ex) {} }, 500);
+      setTimeout(() => { console.log('[recognition] restarting (onend)'); try { recognition.start(); } catch(ex) {} }, 500);
     }
   };
 
   try { recognition.start(); } catch(ex) {}
-  console.log('Speech recognition started');
+  console.log('[recognition] initial start');
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -813,8 +814,7 @@ function matchSpell(text) {
    NARRATOR — SpeechSynthesis with queue and duplex policy
    ═══════════════════════════════════════════════════════════════ */
 const VOICE_LINES = {
-  welcome:          'Welcome to Maya Magic. Wave your wand and speak your spell.',
-  wandFound:        'Ah, I see your wand! Now, speak a spell!',
+  welcome:          'Welcome to Maya Magic. Say a spell!',
   lumos:            'Lumos! Let there be light!',
   nox:              'Nox! Darkness falls.',
   wingardiumleviosa:'Wingardium Leviosa! Up, up, and away!',
@@ -850,13 +850,19 @@ function speak(text, priority = false) {
   utter.pitch = 0.9;
   utter.onstart = () => {
     speaking = true;
-    console.log('[voice] narrator started, pausing recognition');
+    console.log('[recognition] stopping (narrator start)');
     if (recognition) try { recognition.stop(); } catch(ex) {}
   };
   utter.onend = () => {
     speaking = false;
-    console.log('[voice] narrator ended, restarting recognition');
-    if (recognition) try { recognition.start(); } catch(ex) {}
+    console.log('[recognition] narrator ended, scheduling restart in 500ms');
+    setTimeout(() => {
+      if (recognition) {
+        try { recognition.stop(); } catch(ex) {}
+        console.log('[recognition] force restarting after narrator');
+        try { recognition.start(); } catch(ex) {}
+      }
+    }, 500);
     if (speechQueue.length > 0) {
       console.log(`[voice] queued line waiting 2s (queue: ${speechQueue.length})`);
       setTimeout(() => speak(speechQueue.shift()), 2000);
@@ -1391,24 +1397,14 @@ function finalizeSpellRevert() {
 /* ═══════════════════════════════════════════════════════════════
    WAND STATE VOICE TRIGGERS
    ═══════════════════════════════════════════════════════════════ */
-const WAND_VOICE_COOLDOWN = 10000;
 function updateWandVoice(motionDetected) {
   const now = performance.now();
-  const prevWandPresent = wandPresent;
   wandPresent = motionDetected;
+  if (wandPresent && wandPresentTime === 0) wandPresentTime = now;
+  if (!wandPresent) wandPresentTime = 0;
 
-  // Only speak on state CHANGE (transition from not-detected to detected)
-  if (wandPresent && !prevWandPresent) {
-    wandPresentTime = now;
-    if (now - lastWandVoiceTime > WAND_VOICE_COOLDOWN) {
-      speak(VOICE_LINES.wandFound);
-      lastWandVoiceTime = now;
-    }
-  }
-  // wand-lost line removed entirely — it blocked recognition too much
-
-  // Hint after 30 seconds of wand present but no spell
-  if (wandPresent && now - wandPresentTime > 30000 && now - lastSpellVoiceTime > 30000) {
+  // Hint after 60 seconds of wand present but no spell (no wand-found line — it blocked recognition)
+  if (wandPresent && now - wandPresentTime > 60000 && now - lastSpellVoiceTime > 60000) {
     speak(VOICE_LINES.hint);
     lastSpellVoiceTime = now;
   }
