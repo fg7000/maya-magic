@@ -2,6 +2,36 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.5.0] - 2026-04-09
+
+### Added
+- Voice recognition: say spell names to cast (webkitSpeechRecognition, continuous mode, auto-restart)
+- Kid-friendly fuzzy matching with 7+ pronunciation aliases per spell (e.g., "loomis" → Lumos)
+- Wizard narrator via SpeechSynthesis: welcome greeting, spell announcements, wand coaching tips, streak encouragement
+- Duplex policy: recognition pauses during narrator speech to prevent feedback loop
+- 6 fully visual spell effects, each reversible after 4 seconds with 1-second smooth lerp back:
+  - **Lumos** — candles blaze 3x, bloom intensifies, chandelier/glasslight glow gold, 200 gold particles
+  - **Glacius** — candles dim to 15%, room tints frost-blue, stonewall/woodfloor/curtain color shift, 100 ice-blue particles
+  - **Ignis** — candles blaze 4x, temporary fire PointLight, fire meshes scale 2x, 300 orange-red particles
+  - **Levitas** — documents/props float upward with gentle bobbing, 100 light-blue spiral particles
+  - **Nova** — bloom doubles, camera shakes, 500 gold+white particle supernova burst
+  - **Tempest** — candles extinguish, camera shakes 1.5s, curtains/documents rotate in wind, 200 white/gray particles
+- 5-second cooldown between spells with animated SVG radial indicator
+- Spell hint bar ("Say: Lumos · Glacius · ...") that fades after 10 seconds of no interaction
+- Procedural whoosh sound effect via Web Audio API (bandpass-filtered noise with exponential decay)
+- Spell streak tracking with narrator encouragement at 3+ consecutive casts
+- Wand coaching: narrator announces wand detection and suggests spells after 15 seconds of waving
+- Mesh cataloging system: FBX meshes indexed by name for pattern-based spell targeting
+
+### Changed
+- Keyboard shortcuts 1-6 now trigger full visual spell effects (previously console-logged placeholders)
+- Candle flicker system now reads `candleIntensityMultiplier` and `candleColorOverride` for spell modulation
+- Debug overlay now shows active spell type, spell count, and spell state
+- Animation loop integrates `updateSpell(dt)` for spell timing and camera shake
+
+### Fixed
+- Spell hint voice line no longer fires immediately after casting (lastSpellVoiceTime now updated in triggerSpell)
+
 ## [0.2.4.0] - 2026-04-09
 
 ### Added
