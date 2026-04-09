@@ -8,22 +8,15 @@ Think Universal Studios wand experience, but free, open-source, and runs in your
 
 **[https://fg7000.github.io/maya-magic/](https://fg7000.github.io/maya-magic/)**
 
-Or clone and open locally:
+Or clone and run locally:
 
 ```bash
 git clone https://github.com/fg7000/maya-magic.git
 cd maya-magic
-open index.html   # macOS
-# or: xdg-open index.html   # Linux
-# or: start index.html       # Windows
+bash start.sh
 ```
 
-Works on `file://` in Chrome (CDN imports load over HTTPS). If your browser blocks it, use a local server:
-
-```bash
-python3 -m http.server 8000
-# then open http://localhost:8000
-```
+This starts a local server and opens `http://localhost:8000` in your browser. A local server is required because Chrome blocks 3D model loading from `file://` URLs.
 
 ## How It Works
 
@@ -67,7 +60,7 @@ Safari and Firefox: WebGL and keyboard spells work. Voice recognition may not (W
 
 ## Architecture
 
-Single `index.html` file (~2000 lines). Three.js r168 + UnrealBloomPass loaded from jsDelivr CDN. No build step, no npm, no bundler, no server required.
+Single `index.html` file (~400 lines). Three.js r168 + UnrealBloomPass loaded from esm.sh CDN. No build step, no npm, no bundler. Local server required for GLB model loading (see Try It above).
 
 - **Rendering:** Three.js WebGLRenderer with EffectComposer (RenderPass + UnrealBloomPass)
 - **Wand detection:** Frame differencing on a 160x120 downscaled canvas, mapped to 3D via Raycaster
@@ -84,6 +77,8 @@ Your camera feed is processed entirely on your device. It never leaves your brow
 ```
 maya-magic/
   index.html           # The entire app
+  scene.glb            # Dumbledore's Office 3D model
+  start.sh             # Local dev server launcher
   README.md            # This file
   CLAUDE.md            # Project context for Claude Code
   LICENSE              # MIT
