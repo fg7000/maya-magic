@@ -4,19 +4,15 @@ Browser-based spell-casting experience for kids. Single HTML file, Three.js r168
 
 ## Architecture
 
-Single-file app (`index.html`). All code inline, Three.js + post-processing from jsDelivr CDN via ES module imports.
+Single-file app (`index.html`, ~400 lines). Three.js + post-processing loaded from esm.sh CDN via `<script type="importmap">`. Requires HTTP server for GLB model loading (Chrome blocks `fetch()` on `file://`).
 
-**Rendering pipeline:** WebGLRenderer → EffectComposer → RenderPass → UnrealBloomPass → canvas output. ACESFilmicToneMapping. Bloom: strength 1.0, radius 0.4, threshold 0.6.
+**Rendering pipeline:** WebGLRenderer → EffectComposer → RenderPass → UnrealBloomPass → canvas output. ACESFilmicToneMapping. Bloom: strength 1.0, radius 0.4, threshold 0.7.
 
-**Wand detection:** getUserMedia → 160x120 hidden canvas (willReadFrequently) → frame differencing → motion region → Raycaster NDC mapping → 3D particle spawn at depth 2.0.
+**Scene:** Dumbledore's Office GLB model (scene.glb) loaded via GLTFLoader. 4 flickering candle PointLights, moonlight DirectionalLight with PCFSoftShadowMap shadows. OrbitControls with auto-rotate.
 
-**Voice:** webkitSpeechRecognition with fuzzy matching + kid mispronunciation aliases. Duplex policy: recognition pauses during narrator speech to prevent feedback loop.
+**Particles:** 80 dust motes with AdditiveBlending and oscillating opacity. Simple Points geometry (no object pooling in current version).
 
-**Audio:** All procedural via Web Audio API. No audio files.
-
-**Particles:** Object pool pattern (ParticlePool class). 300 trail + 300 spell + 150 ambient = 750 total pre-allocated.
-
-**Spells:** DRY castSpell pattern. Each spell returns a cleanup function. One active at a time (ignore new casts during active spell).
+**Status:** Visual foundation only. Spells, voice recognition, wand detection, audio engine, and narrator are planned but not yet re-implemented after the v0.2.0 rewrite.
 
 ## Key File
 
@@ -25,28 +21,27 @@ Single-file app (`index.html`). All code inline, Three.js + post-processing from
 ## Running Locally
 
 ```bash
-open index.html  # Chrome
-# or: python3 -m http.server 8000
+bash start.sh
+# Or manually: python3 -m http.server 8000
 ```
+
+Local server required because Chrome blocks GLB model loading from `file://` URLs. The app detects `file://` protocol and shows instructions.
 
 ## Deployment
 
 GitHub Pages via `.github/workflows/pages.yml`. Push to `webgl` branch → auto-deploy. No build step.
 
-## Code Organization (section separators in index.html)
+## Code Organization (index.html sections)
 
-1. CDN Imports (Three.js r168 from jsdelivr)
-2. Constants/Config (CONFIG object, all tunable parameters)
-3. Audio Engine (Web Audio procedural synthesis)
-4. Particle System (ParticlePool class, object pooling)
-5. Scene Builder (room geometry, candles, cauldron, owl, bookshelves, window)
-6. Wand Detection (frame differencing, raycaster mapping)
-7. Voice Recognition (fuzzy match, aliases, watchdog)
-8. Narrator (SpeechSynthesis, duplex policy)
-9. Spell Effects (6 spells, each with apply + cleanup)
-10. UI Overlay (title, hints, touch-to-cast, debug mode)
-11. Error Handling + Performance Degradation (progressive: shadows → bloom → particles)
-12. Main Loop + Initialization (10-step init sequence)
+1. Import map (Three.js r168 from esm.sh)
+2. Loading UI + file:// protocol detection
+3. Three.js setup (renderer, scene, camera, controls, post-processing)
+4. GLB model loading (GLTFLoader with progress bar)
+5. Lighting (candle PointLights with flicker, moonlight DirectionalLight)
+6. Dust mote particles (80 motes, AdditiveBlending)
+7. Title overlay with fade-out on interaction
+8. Debug mode (press D for FPS counter)
+9. Animation loop (candle flicker, dust mote oscillation, controls update)
 
 ## Skill routing
 
