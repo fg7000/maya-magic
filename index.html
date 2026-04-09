@@ -67,6 +67,18 @@ canvas#scene { position: fixed; inset: 0; z-index: 0; display: block; }
   display: none; text-align: right; line-height: 1.6;
   pointer-events: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   WAND STATUS INDICATOR
+   ═══════════════════════════════════════════════════════════════ */
+#wand-status {
+  position: fixed; top: 16px; left: 16px; z-index: 200;
+  font-size: 12px; color: #c8a86e; font-family: monospace;
+  opacity: 0.6; pointer-events: none;
+  transition: opacity 0.5s;
+}
+#wand-status.active { color: #4f4; opacity: 0.8; }
+#wand-status.denied { color: #f64; opacity: 0.8; }
 </style>
 
 <script type="importmap">
@@ -98,6 +110,9 @@ canvas#scene { position: fixed; inset: 0; z-index: 0; display: block; }
 
 <!-- Debug overlay -->
 <div id="debug-overlay"></div>
+
+<!-- Wand status indicator -->
+<div id="wand-status"></div>
 
 <script type="module">
 /* ═══════════════════════════════════════════════════════════════
@@ -144,6 +159,22 @@ let debugMode = false;
 let fpsFrames = 0;
 let fpsTime = 0;
 let fps = 60;
+
+// Wand detection state
+let wandActive = false;
+let wandVideo = null;
+let wandCanvas = null;
+let wandCtx = null;
+let prevFrame = null;
+let smoothX = 80;   // EMA-smoothed tip position (center of 160x120)
+let smoothY = 60;
+const WAND_W = 160;
+const WAND_H = 120;
+const DIFF_THRESHOLD = 30;   // per-channel threshold
+const SUM_THRESHOLD = 90;    // sum of abs diffs across RGB
+const MOTION_MIN = 0.002;    // minimum motion ratio to register a wand
+const EMA_ALPHA = 0.4;       // smoothing factor
+const $wandStatus = document.getElementById('wand-status');
 
 /* ═══════════════════════════════════════════════════════════════
    RENDERER
@@ -296,6 +327,105 @@ function updateMotes(time) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   WAND TRAIL PARTICLES — 1500 pooled via THREE.Points (ring buffer)
+   ═══════════════════════════════════════════════════════════════ */
+const TRAIL_COUNT = 1500;
+const trailPositions = new Float32Array(TRAIL_COUNT * 3);
+const trailColors    = new Float32Array(TRAIL_COUNT * 3);
+const trailSizes     = new Float32Array(TRAIL_COUNT);
+const trailAlphas    = new Float32Array(TRAIL_COUNT);
+let trailHead = 0;
+
+// Soft circle texture (32x32 radial gradient)
+const trailTexCanvas = document.createElement('canvas');
+trailTexCanvas.width = 32;
+trailTexCanvas.height = 32;
+const trailTexCtx = trailTexCanvas.getContext('2d');
+const grad = trailTexCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+grad.addColorStop(0, 'rgba(255,255,255,1)');
+grad.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+grad.addColorStop(1, 'rgba(255,255,255,0)');
+trailTexCtx.fillStyle = grad;
+trailTexCtx.fillRect(0, 0, 32, 32);
+const trailTexture = new THREE.CanvasTexture(trailTexCanvas);
+
+const trailGeometry = new THREE.BufferGeometry();
+trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+trailGeometry.setAttribute('color',    new THREE.BufferAttribute(trailColors, 3));
+trailGeometry.setAttribute('size',     new THREE.BufferAttribute(trailSizes, 1));
+
+const trailMaterial = new THREE.PointsMaterial({
+  size: 0.15,
+  map: trailTexture,
+  transparent: true,
+  opacity: 0.9,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  vertexColors: true,
+  sizeAttenuation: true,
+});
+
+const trailPoints = new THREE.Points(trailGeometry, trailMaterial);
+scene.add(trailPoints);
+
+// Raycaster for NDC → 3D mapping
+const wandRaycaster = new THREE.Raycaster();
+const ndcVec = new THREE.Vector2();
+
+// Gold → orange → red color palette for trail particles
+function trailColor(life) {
+  // life: 1.0 = just born (gold), 0.0 = dead (red/transparent)
+  const r = 1.0;
+  const g = 0.4 + life * 0.45;   // gold (0.85) → orange (0.55) → red-ish (0.4)
+  const b = life * 0.2;           // slight warmth at birth, fades to 0
+  return [r, g, b];
+}
+
+function spawnTrailParticle(worldPos) {
+  const idx = trailHead;
+  trailHead = (trailHead + 1) % TRAIL_COUNT;
+  const i3 = idx * 3;
+  trailPositions[i3]     = worldPos.x + (Math.random() - 0.5) * 0.05;
+  trailPositions[i3 + 1] = worldPos.y + (Math.random() - 0.5) * 0.05;
+  trailPositions[i3 + 2] = worldPos.z + (Math.random() - 0.5) * 0.05;
+  const [r, g, b] = trailColor(1.0);
+  trailColors[i3] = r;
+  trailColors[i3 + 1] = g;
+  trailColors[i3 + 2] = b;
+  trailSizes[idx] = 0.12 + Math.random() * 0.06;
+  trailAlphas[idx] = 1.0;
+}
+
+function updateTrailParticles(dt) {
+  const fadeRate = 1.2;  // full fade in ~0.8s
+  let activeCount = 0;
+  for (let i = 0; i < TRAIL_COUNT; i++) {
+    if (trailAlphas[i] <= 0) continue;
+    trailAlphas[i] -= fadeRate * dt;
+    if (trailAlphas[i] < 0) trailAlphas[i] = 0;
+
+    const life = trailAlphas[i];
+    if (life > 0) activeCount++;
+    const i3 = i * 3;
+    // Drift upward slightly
+    trailPositions[i3 + 1] += 0.3 * dt;
+    // Color fade: gold → orange → red
+    const [r, g, b] = trailColor(life);
+    trailColors[i3] = r;
+    trailColors[i3 + 1] = g;
+    trailColors[i3 + 2] = b;
+    // Shrink
+    trailSizes[i] = trailSizes[i] * (0.97 + life * 0.02);
+  }
+  trailGeometry.attributes.position.needsUpdate = true;
+  trailGeometry.attributes.color.needsUpdate = true;
+  trailGeometry.attributes.size.needsUpdate = true;
+
+  // Global opacity modulates by active particle ratio
+  trailMaterial.opacity = activeCount > 0 ? 0.9 : 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    LOAD FBX model
    ═══════════════════════════════════════════════════════════════ */
 const loader = new FBXLoader();
@@ -399,10 +529,114 @@ loader.load(
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   TITLE SCREEN — Click to dismiss
+   WAND DETECTION — frame differencing on 160x120 hidden canvas
+   ═══════════════════════════════════════════════════════════════ */
+function detectWand() {
+  if (!wandActive || !wandVideo || wandVideo.readyState < 2) return;
+
+  // Draw current frame, downscaled to 160x120
+  wandCtx.drawImage(wandVideo, 0, 0, WAND_W, WAND_H);
+  const currentFrame = wandCtx.getImageData(0, 0, WAND_W, WAND_H);
+  const curr = currentFrame.data;
+
+  if (!prevFrame) {
+    prevFrame = currentFrame;
+    return;
+  }
+
+  const prev = prevFrame.data;
+  let totalMotion = 0;
+  let sumX = 0;
+  let sumY = 0;
+
+  // Frame differencing: compare RGB channels, threshold
+  for (let i = 0; i < curr.length; i += 4) {
+    const dr = Math.abs(curr[i]     - prev[i]);
+    const dg = Math.abs(curr[i + 1] - prev[i + 1]);
+    const db = Math.abs(curr[i + 2] - prev[i + 2]);
+
+    if ((dr > DIFF_THRESHOLD || dg > DIFF_THRESHOLD || db > DIFF_THRESHOLD)
+        && (dr + dg + db) > SUM_THRESHOLD) {
+      const pixelIndex = i / 4;
+      const px = pixelIndex % WAND_W;
+      const py = Math.floor(pixelIndex / WAND_W);
+      sumX += px;
+      sumY += py;
+      totalMotion++;
+    }
+  }
+
+  prevFrame = currentFrame;
+
+  // motionRatio denominator is pixel count, NOT byte count (prior learning applied)
+  const motionRatio = totalMotion / (WAND_W * WAND_H);
+
+  if (motionRatio < MOTION_MIN) return;   // too little motion, skip
+
+  // Centroid of motion region
+  const cx = sumX / totalMotion;
+  const cy = sumY / totalMotion;
+
+  // EMA smoothing
+  smoothX = smoothX * (1 - EMA_ALPHA) + cx * EMA_ALPHA;
+  smoothY = smoothY * (1 - EMA_ALPHA) + cy * EMA_ALPHA;
+
+  // Map 2D tip to NDC (mirror X for natural feel)
+  ndcVec.x = -(smoothX / WAND_W) * 2 + 1;
+  ndcVec.y = -(smoothY / WAND_H) * 2 + 1;
+
+  // Unproject to 3D at depth 2.0 from camera
+  wandRaycaster.setFromCamera(ndcVec, camera);
+  const origin = wandRaycaster.ray.origin.clone();
+  const dir = wandRaycaster.ray.direction.clone();
+  const worldPos = origin.add(dir.multiplyScalar(2.0));
+
+  // Spawn 3-5 trail particles per frame when motion detected
+  const count = 3 + Math.floor(Math.random() * 3);
+  for (let j = 0; j < count; j++) {
+    spawnTrailParticle(worldPos);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TITLE SCREEN — Click to dismiss + request camera
    ═══════════════════════════════════════════════════════════════ */
 $titleScreen.addEventListener('click', () => {
+  if (wandVideo) return;  // prevent duplicate camera streams on double-click
   $titleScreen.style.display = 'none';
+
+  // Request camera (requires user gesture)
+  navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
+    .then((stream) => {
+      wandVideo = document.createElement('video');
+      wandVideo.srcObject = stream;
+      wandVideo.setAttribute('playsinline', '');
+      wandVideo.style.display = 'none';
+      document.body.appendChild(wandVideo);
+      wandVideo.play();
+
+      wandCanvas = document.createElement('canvas');
+      wandCanvas.width = WAND_W;
+      wandCanvas.height = WAND_H;
+      wandCtx = wandCanvas.getContext('2d', { willReadFrequently: true });
+
+      wandActive = true;
+      $wandStatus.textContent = 'Wand: Ready';
+      $wandStatus.className = 'active';
+      console.log('Wand detection active (160x120 frame differencing)');
+    })
+    .catch((err) => {
+      console.warn('Camera denied or unavailable:', err.message);
+      $wandStatus.textContent = 'Wand: Camera off';
+      $wandStatus.className = 'denied';
+      // Graceful degradation — app works without camera, use keyboard 1-6
+    });
+});
+
+window.addEventListener('beforeunload', () => {
+  if (wandVideo && wandVideo.srcObject) {
+    wandVideo.srcObject.getTracks().forEach(t => t.stop());
+  }
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -418,6 +652,9 @@ function animate() {
   // Update controls
   controls.update();
 
+  // Wand detection (frame differencing → particle spawn)
+  detectWand();
+
   // Flicker candle lights
   candleLights.forEach((light, i) => {
     light.intensity = 2.0 + Math.sin(time * 8 + i * 2.5) * 0.8 + Math.sin(time * 13 + i * 4) * 0.4;
@@ -425,6 +662,9 @@ function animate() {
 
   // Update dust motes
   updateMotes(time);
+
+  // Update wand trail particles (fade, drift, shrink)
+  updateTrailParticles(dt);
 
   // Render
   composer.render();
@@ -440,7 +680,10 @@ function animate() {
 
   // Debug overlay
   if (debugMode) {
-    $debugOverlay.innerHTML = `FPS: ${fps.toFixed(0)}`;
+    const activeParticles = trailAlphas.filter(a => a > 0).length;
+    $debugOverlay.innerHTML = `FPS: ${fps.toFixed(0)}<br>` +
+      `Wand: ${wandActive ? 'active' : 'off'}<br>` +
+      `Trail: ${activeParticles}/${TRAIL_COUNT}`;
   }
 }
 
@@ -457,14 +700,13 @@ window.addEventListener('resize', () => {
 });
 
 /* ═══════════════════════════════════════════════════════════════
-   DEBUG MODE — Press D
+   DEBUG MODE — Press D | KEYBOARD FALLBACK — Keys 1-6
    ═══════════════════════════════════════════════════════════════ */
 document.addEventListener('keydown', (e) => {
   if (e.key === 'd' || e.key === 'D') {
     debugMode = !debugMode;
     $debugOverlay.style.display = debugMode ? 'block' : 'none';
     if (debugMode) {
-      // Re-log mesh names when entering debug mode
       console.group('Debug: Scene mesh names');
       scene.traverse((child) => {
         if (child.isMesh) {
@@ -474,6 +716,21 @@ document.addEventListener('keydown', (e) => {
       });
       console.groupEnd();
     }
+  }
+
+  // Keyboard 1-6: test particle bursts at random 3D positions
+  const keyNum = parseInt(e.key);
+  if (keyNum >= 1 && keyNum <= 6) {
+    const burstPos = new THREE.Vector3(
+      (Math.random() - 0.5) * 4,
+      1 + Math.random() * 3,
+      (Math.random() - 0.5) * 4
+    );
+    const burstCount = 30 + Math.floor(Math.random() * 20);
+    for (let j = 0; j < burstCount; j++) {
+      spawnTrailParticle(burstPos);
+    }
+    console.log(`Test burst (key ${keyNum}): ${burstCount} particles at (${burstPos.x.toFixed(1)}, ${burstPos.y.toFixed(1)}, ${burstPos.z.toFixed(1)})`);
   }
 });
 
