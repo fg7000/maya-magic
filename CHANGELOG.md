@@ -2,6 +2,18 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.3.0] - 2026-04-09
+
+### Changed
+- Switched from GLTFLoader/GLB to FBXLoader/FBX for the Dumbledore's Office model, resolving texture issues caused by GLB format conversion
+- FBX textures load directly from `model/source/` (17 PNG files), no format conversion needed
+- Diagnostic logging now handles FBX material arrays (meshes can have multiple materials)
+- Camera collision bounds keep the camera inside the room (`maxDistance = 0.9 * bounding box`)
+
+### Fixed
+- Fixed diagnostic `logMeshInfo()` crash when FBX mesh has a material array (Array.prototype.map collision)
+- Fixed stale "GLB loading" reference in file:// protocol error message
+
 ## [0.2.2.0] - 2026-04-08
 
 ### Fixed
