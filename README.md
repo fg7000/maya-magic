@@ -60,7 +60,7 @@ Safari and Firefox: WebGL and keyboard spells work. Voice recognition may not (W
 
 ## Architecture
 
-Single `index.html` file (~400 lines). Three.js r168 + UnrealBloomPass loaded from esm.sh CDN. No build step, no npm, no bundler. Local server required for GLB model loading (see Try It above).
+Single `index.html` file (~480 lines). Three.js r168 + UnrealBloomPass loaded from esm.sh CDN. No build step, no npm, no bundler. Local server required for FBX model loading (see Try It above).
 
 - **Rendering:** Three.js WebGLRenderer with EffectComposer (RenderPass + UnrealBloomPass)
 - **Wand detection:** Frame differencing on a 160x120 downscaled canvas, mapped to 3D via Raycaster
@@ -77,7 +77,8 @@ Your camera feed is processed entirely on your device. It never leaves your brow
 ```
 maya-magic/
   index.html           # The entire app
-  scene.glb            # Dumbledore's Office 3D model
+  model/source/        # Dumbledore's Office FBX model + 17 PNG textures
+  scene.glb            # Legacy GLB model (unused, kept for reference)
   start.sh             # Local dev server launcher
   README.md            # This file
   CLAUDE.md            # Project context for Claude Code
