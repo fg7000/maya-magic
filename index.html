@@ -302,14 +302,24 @@ const loader = new GLTFLoader();
 
 function logMeshInfo(object) {
   console.group('Scene meshes loaded:');
+  let texturedCount = 0;
+  let untexturedCount = 0;
   object.traverse((child) => {
     if (child.isMesh) {
       const verts = child.geometry?.attributes?.position?.count || 0;
-      console.log(`  ${child.name || '(unnamed)'} — ${verts} vertices`);
+      const m = child.material;
+      const hasMap = !!(m && m.map);
+      const mapInfo = hasMap
+        ? `map=${m.map.image?.width}x${m.map.image?.height} colorSpace=${m.map.colorSpace} flipY=${m.map.flipY}`
+        : 'map=null';
+      const matName = m?.name || '(no material)';
+      console.log(`  ${child.name || '(unnamed)'} — ${verts} verts, mat="${matName}", ${mapInfo}`);
+      if (hasMap) texturedCount++; else untexturedCount++;
       child.castShadow = true;
       child.receiveShadow = true;
     }
   });
+  console.log(`TEXTURE SUMMARY: ${texturedCount} textured, ${untexturedCount} untextured`);
   console.groupEnd();
 }
 
@@ -318,6 +328,14 @@ loader.load(
   // onLoad
   (gltf) => {
     const model = gltf.scene;
+
+    // Log GLTF metadata
+    const parser = gltf.parser;
+    if (parser?.json) {
+      console.log('GLTF extensionsUsed:', parser.json.extensionsUsed || []);
+      console.log('GLTF extensionsRequired:', parser.json.extensionsRequired || []);
+      console.log(`GLTF textures: ${(parser.json.textures || []).length}, images: ${(parser.json.images || []).length}`);
+    }
 
     // Enable shadows on all meshes and log info
     logMeshInfo(model);
