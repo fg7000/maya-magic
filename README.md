@@ -1,6 +1,6 @@
 # Maya Magic
 
-**Browser-based spell-casting for kids.** Open a URL in Chrome, wave any stick in front of your webcam, and watch a golden particle trail follow your wand through a cinematic 3D wizard's study. Say spell names or press 1-6 to cast spells with full visual effects.
+**Browser-based spell-casting for kids.** Open a URL in Chrome, wave any stick in front of your webcam, and watch a golden particle trail follow your wand through a cinematic 3D wizard's study. Say real Harry Potter spell names or press 1-0 to cast 10 spells with full visual effects.
 
 Think Universal Studios wand experience, but free, open-source, and runs in your browser with zero install.
 
@@ -23,7 +23,7 @@ This starts a local server and opens `http://localhost:8000` in your browser. A 
 1. Click **Start Magic** to grant camera access
 2. A 3D wizard's study appears with flickering candles, dust motes, and moonlight
 3. Wave any stick (wand, pencil, spatula) in front of your webcam. A golden particle trail follows your motion.
-4. Say a spell name ("Lumos!") or press keys 1-6. The room transforms with particle bursts, lighting changes, and camera effects.
+4. Say a spell name ("Lumos!", "Expecto Patronum!") or press keys 1-0. The room transforms with particle bursts, lighting changes, and camera effects.
 5. A wizard narrator guides you with voice prompts and encouragement.
 
 No special wand needed. No markers. No tape. Just grab a stick and go.
@@ -33,18 +33,22 @@ No special wand needed. No markers. No tape. Just grab a stick and go.
 | Key | Spell | Effect |
 |-----|-------|--------|
 | 1 | **Lumos** | Candles blaze, bloom intensifies, gold particle burst |
-| 2 | **Glacius** | Room tints frost-blue, candles dim, ice particles |
-| 3 | **Ignis** | Fire erupts, candles blaze 4x, orange-red particles |
-| 4 | **Levitas** | Objects float upward with gentle bobbing, blue particles |
-| 5 | **Nova** | Bloom doubles, camera shakes, supernova particle burst |
-| 6 | **Tempest** | Candles extinguish, wind shakes camera, white particles |
+| 2 | **Nox** | Darkness falls, candles nearly out, purple particles |
+| 3 | **Wingardium Leviosa** | Objects float upward with gentle bobbing, blue particles |
+| 4 | **Alohomora** | Golden sparkles, doors and cabinets jiggle open |
+| 5 | **Accio** | Objects slide toward you, white streak particles |
+| 6 | **Reparo** | Warm golden glow, spiral particles converge |
+| 7 | **Expelliarmus** | Red flash, camera shake, concentrated red burst |
+| 8 | **Incendio** | Fire erupts, candles blaze 4x, orange-red particles |
+| 9 | **Aguamenti** | Blue water tint, candles dim, rain-like particles |
+| 0 | **Expecto Patronum** | Brilliant white-blue burst, bloom maxes out, 500 particles |
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Voice: "Lumos", "Glacius", etc. | Cast spells by speaking |
-| Keys 1-6 | Cast spells by keyboard |
+| Voice: "Lumos", "Expecto Patronum", etc. | Cast spells by speaking |
+| Keys 1-0 | Cast spells by keyboard (10 spells) |
 | D | Toggle debug overlay (FPS, particles, spell state) |
 | +/- | Adjust wand detection sensitivity |
 
@@ -56,18 +60,18 @@ Voice recognition works in Chrome (uses browser's built-in speech service). On m
 - Webcam
 - Any stick-shaped object for your wand
 
-Safari and Firefox: WebGL and keyboard spells work. Wand detection requires getUserMedia support. Keyboard shortcuts 1-6 always work.
+Safari and Firefox: WebGL and keyboard spells work. Wand detection requires getUserMedia support. Keyboard shortcuts 1-0 always work.
 
 ## Architecture
 
-Single `index.html` file (~1400 lines). Three.js r168 + UnrealBloomPass loaded from esm.sh CDN. No build step, no npm, no bundler. Local server required for FBX model loading (see Try It above).
+Single `index.html` file (~1550 lines). Three.js r168 + UnrealBloomPass loaded from esm.sh CDN. No build step, no npm, no bundler. Local server required for FBX model loading (see Try It above).
 
 - **Rendering:** Three.js WebGLRenderer with EffectComposer (RenderPass + UnrealBloomPass)
 - **Wand detection:** getUserMedia → 160x120 downscaled canvas → frame differencing → EMA-smoothed motion centroid → Raycaster 3D projection
 - **Particles:** 80 dust motes + 1500 trail particles (ring buffer, gold→orange→red fade, ~0.8s lifetime)
 - **Voice recognition:** webkitSpeechRecognition, continuous mode, fuzzy matching with kid-friendly aliases
 - **Narrator:** SpeechSynthesis queue with priority interrupt, duplex policy (pauses recognition during speech)
-- **Spell effects:** 6 reversible spells with 4s duration + 1s lerp revert. Modify candle intensity, bloom, mesh colors/emissive/scale/position, camera shake. 5s cooldown between casts.
+- **Spell effects:** 10 reversible Harry Potter spells with 4s duration + 1s lerp revert. Modify candle intensity, bloom, mesh colors/emissive/scale/position, camera shake. 5s cooldown between casts.
 - **Audio:** Web Audio API procedural synthesis (bandpass-filtered noise whoosh)
 
 ## Privacy

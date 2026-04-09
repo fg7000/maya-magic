@@ -4,17 +4,19 @@ Browser-based spell-casting experience for kids. Single HTML file, Three.js r168
 
 ## Architecture
 
-Single-file app (`index.html`, ~740 lines). Three.js + post-processing loaded from esm.sh CDN via `<script type="importmap">`. Requires HTTP server for FBX model loading (Chrome blocks `fetch()` on `file://`).
+Single-file app (`index.html`). All code inline, Three.js + post-processing from esm.sh CDN via ES module imports.
 
 **Rendering pipeline:** WebGLRenderer → EffectComposer → RenderPass → UnrealBloomPass → canvas output. ACESFilmicToneMapping. Bloom: strength 1.0, radius 0.4, threshold 0.6.
 
-**Scene:** Dumbledore's Office FBX model (`model/source/DumbledoreOffice.fbx`) loaded via FBXLoader with 17 separate PNG textures. 4 flickering candle PointLights, moonlight DirectionalLight with PCFSoftShadowMap shadows. OrbitControls with auto-rotate. Camera collision bounds prevent escaping the room.
-
 **Wand detection:** getUserMedia → 160x120 hidden canvas (willReadFrequently) → frame differencing → motion region → Raycaster NDC mapping → 3D particle spawn at depth 2.0.
 
-**Particles:** 80 dust motes with AdditiveBlending and oscillating opacity. 1500 trail particles in ring buffer with gold→orange→red color fade and ~0.8s lifetime.
+**Voice:** webkitSpeechRecognition with fuzzy matching + kid mispronunciation aliases. Duplex policy: recognition pauses during narrator speech to prevent feedback loop.
 
-**Spells:** Keyboard shortcuts 1-6 trigger placeholder spell effects (console log). Full spell system with visual effects planned for next version.
+**Audio:** All procedural via Web Audio API. No audio files.
+
+**Particles:** Object pool pattern (ParticlePool class). 300 trail + 300 spell + 150 ambient = 750 total pre-allocated.
+
+**Spells:** DRY castSpell pattern. Each spell returns a cleanup function. One active at a time (ignore new casts during active spell).
 
 ## Key File
 
@@ -23,30 +25,28 @@ Single-file app (`index.html`, ~740 lines). Three.js + post-processing loaded fr
 ## Running Locally
 
 ```bash
-bash start.sh
-# Or manually: python3 -m http.server 8000
+open index.html  # Chrome
+# or: python3 -m http.server 8000
 ```
-
-Local server required because Chrome blocks FBX model loading from `file://` URLs. The app detects `file://` protocol and shows instructions.
 
 ## Deployment
 
 GitHub Pages via `.github/workflows/pages.yml`. Push to `webgl` branch → auto-deploy. No build step.
 
-## Code Organization (index.html sections)
+## Code Organization (section separators in index.html)
 
-1. Import map (Three.js r168 from esm.sh)
-2. Loading UI + file:// protocol detection
-3. Three.js setup (renderer, scene, camera, controls, post-processing)
-4. FBX model loading (FBXLoader with progress bar)
-5. Lighting (candle PointLights with flicker, moonlight DirectionalLight)
-6. Dust mote particles (80 motes, AdditiveBlending)
-7. Trail particle system (1500 particles, ring buffer, gold→red fade)
-8. Wand detection (frame differencing, getUserMedia, Raycaster mapping)
-9. Title overlay with camera request on interaction
-10. Keyboard spell shortcuts (1-6) + sensitivity controls (+/-)
-11. Debug overlay (D key: FPS, particles, wand timing, sensitivity)
-12. Animation loop (candle flicker, dust motes, wand detection, trail update)
+1. CDN Imports (Three.js r168 from esm.sh)
+2. Constants/Config (CONFIG object, all tunable parameters)
+3. Audio Engine (Web Audio procedural synthesis)
+4. Particle System (ParticlePool class, object pooling)
+5. Scene Builder (room geometry, candles, cauldron, owl, bookshelves, window)
+6. Wand Detection (frame differencing, raycaster mapping)
+7. Voice Recognition (fuzzy match, aliases, watchdog)
+8. Narrator (SpeechSynthesis, duplex policy)
+9. Spell Effects (10 Harry Potter spells, each with apply + cleanup)
+10. UI Overlay (title, hints, touch-to-cast, debug mode)
+11. Error Handling + Performance Degradation (progressive: shadows → bloom → particles)
+12. Main Loop + Initialization (10-step init sequence)
 
 ## Skill routing
 

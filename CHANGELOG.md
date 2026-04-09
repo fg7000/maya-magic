@@ -2,6 +2,34 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.6.0] - 2026-04-09
+
+### Added
+- 10 real Harry Potter spells replace the original 6: Lumos, Nox, Wingardium Leviosa, Alohomora, Accio, Reparo, Expelliarmus, Incendio, Aguamenti, Expecto Patronum
+- 7 new spell effects with unique visuals:
+  - **Nox** — candles nearly extinguish, bloom drops, purple darkness particles
+  - **Alohomora** — golden sparkles, doors/cabinets jiggle on their hinges
+  - **Accio** — objects slide toward the caster, white streak particles
+  - **Reparo** — warm golden glow, spiral particles converging inward
+  - **Expelliarmus** — red flash, sharp camera shake, concentrated red particles
+  - **Aguamenti** — blue water tint, candles dim, rain-like blue particles
+  - **Expecto Patronum** — brilliant white-blue burst, bloom maxes out, 500 particles
+- Voice state console logging (`[voice] speak:`, `[voice] narrator started/ended`) for debugging duplex policy
+
+### Fixed
+- Camera now starts inside the room at eye height instead of orbiting the exterior stone tower
+- Exterior-only meshes (_front_mesh, _arch_0, _grunge_) hidden so you never see the outside
+- Narrator no longer talks non-stop about the wand: cooldown increased to 10 seconds, wand-lost line removed entirely
+- Speech queue capped at 1 item (replace, not accumulate) so narrator never backs up
+- 2-second gap between queued voice lines gives speech recognition more listening time
+- Spell hint threshold increased from 15s to 30s to reduce narrator interruptions
+
+### Changed
+- Keyboard shortcuts expanded from 1-6 to 1-0 (10 spells)
+- Spell hint bar updated with all 10 spell names
+- OrbitControls: pan disabled, polar angle constrained to prevent looking through floor/ceiling
+- Auto-rotate speed reduced from default to 0.2 for gentler interior camera movement
+
 ## [0.2.5.0] - 2026-04-09
 
 ### Added
