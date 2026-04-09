@@ -2,6 +2,19 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.2.0] - 2026-04-08
+
+### Fixed
+- Fixed missing textures on GLB model: converted `scene.glb` from deprecated `KHR_materials_pbrSpecularGlossiness` (unsupported by Three.js r168) to standard `pbrMetallicRoughness` using gltf-transform
+- Fixed dark/black scene: set `outputColorSpace = SRGBColorSpace` on renderer and increased ambient + moonlight intensity
+- Fixed invisible model: GLB bounding box was ~0.1 units, added 100x scale so geometry fills the viewport
+
+### Added
+- Diagnostic texture logging in debug output: per-mesh texture status, map dimensions, colorSpace, GLTF extension metadata
+
+### Changed
+- Updated CLAUDE.md to reflect esm.sh CDN, GLB model architecture, and server requirement
+
 ## [0.2.1.0] - 2026-04-08
 
 ### Fixed
