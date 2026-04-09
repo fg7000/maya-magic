@@ -2,6 +2,22 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.4.0] - 2026-04-09
+
+### Added
+- Webcam-based wand detection: wave any stick in front of camera, golden particle trail follows
+- Frame differencing pipeline: getUserMedia → 160x120 downscaled canvas → motion centroid → EMA smoothing → Raycaster 3D projection
+- Golden particle trail system: 1500-particle ring buffer with AdditiveBlending, gold→orange→red color fade, ~0.8s lifetime
+- Wand status indicator ("Wand: Tracking" / "Wand: Scanning") overlays the 3D scene
+- Keyboard shortcuts 1-6 to cast spells (Lumos, Glacius, Ignis, Levitas, Nova, Tempest), with console-logged placeholder effects
+- Sensitivity controls: +/- keys adjust motion detection threshold
+- Debug overlay (D key): FPS, active trail particles, wand detection timing, sensitivity level
+
+### Fixed
+- Prevented duplicate camera streams on double-click of Start Magic button
+- Camera stream now properly released on page unload (beforeunload handler)
+- Eliminated per-frame array allocation in particle update loop (filter→counter optimization)
+
 ## [0.2.3.0] - 2026-04-09
 
 ### Changed
