@@ -104,7 +104,7 @@ canvas#scene { position: fixed; inset: 0; z-index: 0; display: block; }
    IMPORTS
    ═══════════════════════════════════════════════════════════════ */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -132,7 +132,7 @@ if (window.location.protocol === 'file:') {
       <p style="color: #888; margin-top: 0.5rem;">Then open <a href="http://localhost:8000" style="color: #c8a030;">http://localhost:8000</a></p>
     </div>
   `;
-  throw new Error('file:// protocol detected — need HTTP server for GLB loading');
+  throw new Error('file:// protocol detected — need HTTP server for model loading');
 }
 const $debugOverlay = document.getElementById('debug-overlay');
 const canvas = document.getElementById('scene');
@@ -296,9 +296,9 @@ function updateMotes(time) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   LOAD scene.glb
+   LOAD FBX model
    ═══════════════════════════════════════════════════════════════ */
-const loader = new GLTFLoader();
+const loader = new FBXLoader();
 
 function logMeshInfo(object) {
   console.group('Scene meshes loaded:');
@@ -307,13 +307,14 @@ function logMeshInfo(object) {
   object.traverse((child) => {
     if (child.isMesh) {
       const verts = child.geometry?.attributes?.position?.count || 0;
-      const m = child.material;
-      const hasMap = !!(m && m.map);
-      const mapInfo = hasMap
-        ? `map=${m.map.image?.width}x${m.map.image?.height} colorSpace=${m.map.colorSpace} flipY=${m.map.flipY}`
-        : 'map=null';
-      const matName = m?.name || '(no material)';
-      console.log(`  ${child.name || '(unnamed)'} — ${verts} verts, mat="${matName}", ${mapInfo}`);
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      const matNames = mats.map(m => m?.name || '(no material)').join(', ');
+      const hasMap = mats.some(m => m && m.map);
+      const mapInfo = mats.map(m => {
+        if (m && m.map) return `map=${m.map.image?.width}x${m.map.image?.height} colorSpace=${m.map.colorSpace}`;
+        return 'map=null';
+      }).join(' | ');
+      console.log(`  ${child.name || '(unnamed)'} — ${verts} verts, mat="${matNames}", ${mapInfo}`);
       if (hasMap) texturedCount++; else untexturedCount++;
       child.castShadow = true;
       child.receiveShadow = true;
@@ -324,30 +325,24 @@ function logMeshInfo(object) {
 }
 
 loader.load(
-  'scene.glb',
-  // onLoad
-  (gltf) => {
-    const model = gltf.scene;
-
-    // Log GLTF metadata
-    const parser = gltf.parser;
-    if (parser?.json) {
-      console.log('GLTF extensionsUsed:', parser.json.extensionsUsed || []);
-      console.log('GLTF extensionsRequired:', parser.json.extensionsRequired || []);
-      console.log(`GLTF textures: ${(parser.json.textures || []).length}, images: ${(parser.json.images || []).length}`);
-    }
-
+  'model/source/DumbledoreOffice.fbx',
+  // onLoad — FBXLoader returns the Group directly (no wrapper)
+  (model) => {
     // Enable shadows on all meshes and log info
     logMeshInfo(model);
 
-    // Fix texture color space — GLTF textures must be SRGBColorSpace in Three.js r168
+    // Fix texture color space — FBX textures need SRGBColorSpace in Three.js r168
+    // FBX meshes can have material arrays, so handle both single and array cases
     model.traverse((child) => {
       if (child.isMesh && child.material) {
-        if (child.material.map) {
-          child.material.map.colorSpace = THREE.SRGBColorSpace;
-          child.material.map.needsUpdate = true;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const mat of materials) {
+          if (mat.map) {
+            mat.map.colorSpace = THREE.SRGBColorSpace;
+            mat.map.needsUpdate = true;
+          }
+          mat.needsUpdate = true;
         }
-        child.material.needsUpdate = true;
       }
     });
 
@@ -374,6 +369,9 @@ loader.load(
     camera.lookAt(center);
     controls.update();
 
+    // Camera collision bounds — keep camera inside the room
+    controls.maxDistance = maxDim * 0.9;
+
     console.log(`Scaled bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
     console.log(`Center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
 
@@ -393,10 +391,10 @@ loader.load(
   },
   // onError
   (error) => {
-    console.error('Failed to load scene.glb:', error);
+    console.error('Failed to load FBX model:', error);
     $progressBar.parentElement.style.display = 'none';
     $errorMsg.style.display = 'block';
-    $errorMsg.textContent = 'Could not load the magic room. Make sure scene.glb is in the same folder.';
+    $errorMsg.textContent = 'Could not load the magic room. Make sure model/source/DumbledoreOffice.fbx and its textures are present.';
   }
 );
 
