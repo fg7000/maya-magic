@@ -151,8 +151,9 @@ let fps = 60;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.8;
+renderer.toneMappingExposure = 1.3;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -196,7 +197,7 @@ composer.addPass(bloomPass);
    LIGHTING
    ═══════════════════════════════════════════════════════════════ */
 // Ambient
-const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.3);
+const ambientLight = new THREE.AmbientLight(0x554433, 1.0);
 scene.add(ambientLight);
 
 // 4 candle point lights
@@ -207,7 +208,8 @@ const candleLightData = [
   { pos: [-1, 2, 2] },
 ];
 const candleLights = candleLightData.map((d, i) => {
-  const light = new THREE.PointLight(0xffaa44, 0.4, 6);
+  const light = new THREE.PointLight(0xffaa44, 2.0, 20);
+  light.decay = 1;
   light.position.set(...d.pos);
   // At least 2 cast shadows
   if (i < 2) {
@@ -220,7 +222,7 @@ const candleLights = candleLightData.map((d, i) => {
 });
 
 // Moonlight (directional)
-const moonLight = new THREE.DirectionalLight(0x4466aa, 0.3);
+const moonLight = new THREE.DirectionalLight(0x4466aa, 0.6);
 moonLight.position.set(3, 6, -4);
 moonLight.castShadow = true;
 moonLight.shadow.mapSize.width = 1024;
@@ -232,6 +234,10 @@ moonLight.shadow.camera.right = 8;
 moonLight.shadow.camera.top = 8;
 moonLight.shadow.camera.bottom = -2;
 scene.add(moonLight);
+
+// Hemisphere fill light — cool sky, warm ground, soft fill for shadows
+const hemiLight = new THREE.HemisphereLight(0x8888aa, 0x443322, 0.4);
+scene.add(hemiLight);
 
 /* ═══════════════════════════════════════════════════════════════
    DUST MOTES — 80 particles via THREE.Points
@@ -316,6 +322,17 @@ loader.load(
     // Enable shadows on all meshes and log info
     logMeshInfo(model);
 
+    // Fix texture color space — GLTF textures must be SRGBColorSpace in Three.js r168
+    model.traverse((child) => {
+      if (child.isMesh && child.material) {
+        if (child.material.map) {
+          child.material.map.colorSpace = THREE.SRGBColorSpace;
+          child.material.map.needsUpdate = true;
+        }
+        child.material.needsUpdate = true;
+      }
+    });
+
     scene.add(model);
 
     // Scale model to ~10 units (native size is ~0.1 units)
@@ -387,7 +404,7 @@ function animate() {
 
   // Flicker candle lights
   candleLights.forEach((light, i) => {
-    light.intensity = 0.4 + Math.sin(time * 8 + i * 2.5) * 0.2 + Math.sin(time * 13 + i * 4) * 0.1;
+    light.intensity = 2.0 + Math.sin(time * 8 + i * 2.5) * 0.8 + Math.sin(time * 13 + i * 4) * 0.4;
   });
 
   // Update dust motes
