@@ -2,6 +2,19 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.1.0] - 2026-04-08
+
+### Fixed
+- Fixed `ReferenceError: moteOpacities is not defined` crash on page load (missing Float32Array declaration)
+- Added `file://` protocol detection with user-friendly message and instructions when Chrome blocks GLB loading from local files
+
+### Added
+- `start.sh` helper script for one-command local dev server (`bash start.sh`)
+
+### Changed
+- Updated README quick start to use `start.sh` instead of `open index.html`
+- Fixed README architecture section: corrected CDN reference (esm.sh, not jsDelivr) and line count (~400, not ~2000), noted server requirement for GLB loading
+
 ## [0.2.0.0] - 2026-04-08
 
 ### Changed
