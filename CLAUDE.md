@@ -4,15 +4,17 @@ Browser-based spell-casting experience for kids. Single HTML file, Three.js r168
 
 ## Architecture
 
-Single-file app (`index.html`, ~480 lines). Three.js + post-processing loaded from esm.sh CDN via `<script type="importmap">`. Requires HTTP server for FBX model loading (Chrome blocks `fetch()` on `file://`).
+Single-file app (`index.html`, ~740 lines). Three.js + post-processing loaded from esm.sh CDN via `<script type="importmap">`. Requires HTTP server for FBX model loading (Chrome blocks `fetch()` on `file://`).
 
-**Rendering pipeline:** WebGLRenderer → EffectComposer → RenderPass → UnrealBloomPass → canvas output. ACESFilmicToneMapping. Bloom: strength 1.0, radius 0.4, threshold 0.7.
+**Rendering pipeline:** WebGLRenderer → EffectComposer → RenderPass → UnrealBloomPass → canvas output. ACESFilmicToneMapping. Bloom: strength 1.0, radius 0.4, threshold 0.6.
 
 **Scene:** Dumbledore's Office FBX model (`model/source/DumbledoreOffice.fbx`) loaded via FBXLoader with 17 separate PNG textures. 4 flickering candle PointLights, moonlight DirectionalLight with PCFSoftShadowMap shadows. OrbitControls with auto-rotate. Camera collision bounds prevent escaping the room.
 
-**Particles:** 80 dust motes with AdditiveBlending and oscillating opacity. Simple Points geometry (no object pooling in current version).
+**Wand detection:** getUserMedia → 160x120 hidden canvas (willReadFrequently) → frame differencing → motion region → Raycaster NDC mapping → 3D particle spawn at depth 2.0.
 
-**Status:** Visual foundation only. Spells, voice recognition, wand detection, audio engine, and narrator are planned but not yet re-implemented after the v0.2.0 rewrite.
+**Particles:** 80 dust motes with AdditiveBlending and oscillating opacity. 1500 trail particles in ring buffer with gold→orange→red color fade and ~0.8s lifetime.
+
+**Spells:** Keyboard shortcuts 1-6 trigger placeholder spell effects (console log). Full spell system with visual effects planned for next version.
 
 ## Key File
 
@@ -39,9 +41,12 @@ GitHub Pages via `.github/workflows/pages.yml`. Push to `webgl` branch → auto-
 4. FBX model loading (FBXLoader with progress bar)
 5. Lighting (candle PointLights with flicker, moonlight DirectionalLight)
 6. Dust mote particles (80 motes, AdditiveBlending)
-7. Title overlay with fade-out on interaction
-8. Debug mode (press D for FPS counter)
-9. Animation loop (candle flicker, dust mote oscillation, controls update)
+7. Trail particle system (1500 particles, ring buffer, gold→red fade)
+8. Wand detection (frame differencing, getUserMedia, Raycaster mapping)
+9. Title overlay with camera request on interaction
+10. Keyboard spell shortcuts (1-6) + sensitivity controls (+/-)
+11. Debug overlay (D key: FPS, particles, wand timing, sensitivity)
+12. Animation loop (candle flicker, dust motes, wand detection, trail update)
 
 ## Skill routing
 
