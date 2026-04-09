@@ -318,7 +318,16 @@ loader.load(
 
     scene.add(model);
 
-    // Fit camera to model bounding box
+    // Scale model to ~10 units (native size is ~0.1 units)
+    const rawBox = new THREE.Box3().setFromObject(model);
+    const rawSize = rawBox.getSize(new THREE.Vector3());
+    const rawMax = Math.max(rawSize.x, rawSize.y, rawSize.z);
+    const TARGET_SIZE = 10;
+    const scaleFactor = TARGET_SIZE / rawMax;
+    model.scale.setScalar(scaleFactor);
+    console.log(`Model native size: ${rawSize.x.toFixed(3)} x ${rawSize.y.toFixed(3)} x ${rawSize.z.toFixed(3)} — scaling ${scaleFactor.toFixed(1)}x`);
+
+    // Recompute bounding box after scaling
     const box = new THREE.Box3().setFromObject(model);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -330,7 +339,7 @@ loader.load(
     camera.lookAt(center);
     controls.update();
 
-    console.log(`Model loaded. Bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
+    console.log(`Scaled bounding box: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
     console.log(`Center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
 
     // Hide loading, show title
