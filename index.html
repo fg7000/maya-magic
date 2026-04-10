@@ -423,11 +423,12 @@ trailGeometry.setAttribute('color',    new THREE.BufferAttribute(trailColors, 3)
 trailGeometry.setAttribute('size',     new THREE.BufferAttribute(trailSizes, 1));
 
 const trailMaterial = new THREE.PointsMaterial({
-  size: 0.15,
+  size: 0.25,
   map: trailTexture,
   transparent: true,
   opacity: 0.9,
   blending: THREE.AdditiveBlending,
+  depthTest: false,
   depthWrite: false,
   vertexColors: true,
   sizeAttenuation: true,
@@ -449,7 +450,13 @@ function trailColor(life) {
   return [r, g, b];
 }
 
+let _trailDbgLast = 0;
 function spawnTrailParticle(worldPos) {
+  const now = performance.now();
+  if (now - _trailDbgLast > 2000) {
+    _trailDbgLast = now;
+    console.log('[trail] spawn at', worldPos.x.toFixed(2), worldPos.y.toFixed(2), worldPos.z.toFixed(2));
+  }
   const idx = trailHead;
   trailHead = (trailHead + 1) % TRAIL_COUNT;
   const i3 = idx * 3;
@@ -460,7 +467,7 @@ function spawnTrailParticle(worldPos) {
   trailColors[i3] = r;
   trailColors[i3 + 1] = g;
   trailColors[i3 + 2] = b;
-  trailSizes[idx] = 0.12 + Math.random() * 0.06;
+  trailSizes[idx] = 0.25 + Math.random() * 0.1;
   trailAlphas[idx] = 1.0;
 }
 
@@ -677,11 +684,11 @@ function detectWand() {
   ndcVec.x = -(smoothX / WAND_W) * 2 + 1;
   ndcVec.y = -(smoothY / WAND_H) * 2 + 1;
 
-  // Unproject to 3D at depth 2.0 from camera
+  // Unproject to 3D at depth 1.0 from camera (reduced from 2.0 — interior camera)
   wandRaycaster.setFromCamera(ndcVec, camera);
   const origin = wandRaycaster.ray.origin.clone();
   const dir = wandRaycaster.ray.direction.clone();
-  const worldPos = origin.add(dir.multiplyScalar(2.0));
+  const worldPos = origin.add(dir.multiplyScalar(1.0));
 
   // Spawn 3-5 trail particles per frame when motion detected
   const count = 3 + Math.floor(Math.random() * 3);
