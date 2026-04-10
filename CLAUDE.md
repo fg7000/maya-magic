@@ -1,30 +1,52 @@
 # Maya Magic
 
-Camera-based spell-casting app for kids. Python 3.9+, OpenCV, Pygame, SpeechRecognition, pyttsx3.
+Browser-based spell-casting experience for kids. Single HTML file, Three.js r168, WebGL + UnrealBloomPass. Zero dependencies, zero build step.
 
 ## Architecture
 
-Single-file app (`main.py`). Hybrid wand detection: MOG2 background subtraction (primary) + motion-trail tracking (fallback). Speech recognition runs in daemon thread, communicates via `queue.Queue`. Pygame renders fullscreen at 30fps target.
+Single-file app (`index.html`). All code inline, Three.js + post-processing from esm.sh CDN via ES module imports.
 
-## Key Files
+**Rendering pipeline:** WebGLRenderer → EffectComposer → RenderPass → UnrealBloomPass → canvas output. ACESFilmicToneMapping. Bloom: strength 1.0, radius 0.4, threshold 0.6.
 
-- `main.py` - entire app (detection, particles, voice, UI)
-- `generate_voices.py` - one-time WAV generation via pyttsx3
-- `setup.sh` - install + generate + launch
-- `tests/test_gestures.py` - 50 unit tests
+**Wand detection:** getUserMedia → 160x120 hidden canvas (willReadFrequently) → frame differencing → motion region → Raycaster NDC mapping → 3D particle spawn at depth 2.0.
 
-## Running Tests
+**Voice:** webkitSpeechRecognition with fuzzy matching + kid mispronunciation aliases. Duplex policy: recognition pauses during narrator speech to prevent feedback loop.
+
+**Audio:** All procedural via Web Audio API. No audio files.
+
+**Particles:** Object pool pattern (ParticlePool class). 300 trail + 300 spell + 150 ambient = 750 total pre-allocated.
+
+**Spells:** DRY castSpell pattern. Each spell returns a cleanup function. One active at a time (ignore new casts during active spell).
+
+## Key File
+
+- `index.html` — the entire app (scene, spells, detection, audio, voice, UI, error handling)
+
+## Running Locally
 
 ```bash
-python3 -m pytest tests/ -v
+open index.html  # Chrome
+# or: python3 -m http.server 8000
 ```
 
-## Running the App
+## Deployment
 
-```bash
-python3 main.py --windowed  # windowed mode
-python3 main.py             # fullscreen
-```
+GitHub Pages via `.github/workflows/pages.yml`. Push to `webgl` branch → auto-deploy. No build step.
+
+## Code Organization (section separators in index.html)
+
+1. CDN Imports (Three.js r168 from esm.sh)
+2. Constants/Config (CONFIG object, all tunable parameters)
+3. Audio Engine (Web Audio procedural synthesis)
+4. Particle System (ParticlePool class, object pooling)
+5. Scene Builder (room geometry, candles, cauldron, owl, bookshelves, window)
+6. Wand Detection (frame differencing, raycaster mapping)
+7. Voice Recognition (fuzzy match, aliases, watchdog)
+8. Narrator (SpeechSynthesis, duplex policy)
+9. Spell Effects (10 Harry Potter spells, each with apply + cleanup)
+10. UI Overlay (title, hints, touch-to-cast, debug mode)
+11. Error Handling + Performance Degradation (progressive: shadows → bloom → particles)
+12. Main Loop + Initialization (10-step init sequence)
 
 ## Skill routing
 

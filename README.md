@@ -1,25 +1,30 @@
 # Maya Magic
 
-**Camera-based spell-casting for kids.** Wave any stick in front of your webcam, say a spell name, and watch fullscreen magical particle effects explode on screen. A wizard voice guides the whole experience.
+**Browser-based spell-casting for kids.** Open a URL in Chrome, wave any stick in front of your webcam, and watch a golden particle trail follow your wand through a cinematic 3D wizard's study. Say real Harry Potter spell names or press 1-0 to cast 10 spells with full visual effects.
 
-Think Universal Studios wand experience, but free, open-source, and works with any stick in your living room.
+Think Universal Studios wand experience, but free, open-source, and runs in your browser with zero install.
 
-## Quick Start
+## Try It
+
+**[https://fg7000.github.io/maya-magic/](https://fg7000.github.io/maya-magic/)**
+
+Or clone and run locally:
 
 ```bash
 git clone https://github.com/fg7000/maya-magic.git
 cd maya-magic
-bash setup.sh
+bash start.sh
 ```
 
-That's it. The setup script installs dependencies, generates wizard voice files, and launches the app.
+This starts a local server and opens `http://localhost:8000` in your browser. A local server is required because Chrome blocks 3D model loading from `file://` URLs.
 
 ## How It Works
 
-1. The webcam detects any stick-shaped object using background subtraction (OpenCV)
-2. The wand tip is tracked in real-time with golden particle trails
-3. Say a spell name out loud (or press keys 1-6) to cast spells
-4. Fullscreen particle effects + wizard voice respond
+1. Click **Start Magic** to grant camera access
+2. A 3D wizard's study appears with flickering candles, dust motes, and moonlight
+3. Wave any stick (wand, pencil, spatula) in front of your webcam. A golden particle trail follows your motion.
+4. Say a spell name ("Lumos!", "Expecto Patronum!") or press keys 1-0. The room transforms with particle bursts, lighting changes, and camera effects.
+5. A wizard narrator guides you with voice prompts and encouragement.
 
 No special wand needed. No markers. No tape. Just grab a stick and go.
 
@@ -27,86 +32,65 @@ No special wand needed. No markers. No tape. Just grab a stick and go.
 
 | Key | Spell | Effect |
 |-----|-------|--------|
-| 1 | **Lumos** | Radial burst of white/yellow light |
-| 2 | **Nova** | Rainbow explosion |
-| 3 | **Glacius** | Blue snowfall |
-| 4 | **Ignis** | Rising flames |
-| 5 | **Levitas** | Purple spiral |
-| 6 | **Tempest** | Cyan storm |
+| 1 | **Lumos** | Candles blaze, bloom intensifies, gold particle burst |
+| 2 | **Nox** | Darkness falls, candles nearly out, purple particles |
+| 3 | **Wingardium Leviosa** | Objects float upward with gentle bobbing, blue particles |
+| 4 | **Alohomora** | Golden sparkles, doors and cabinets jiggle open |
+| 5 | **Accio** | Objects slide toward you, white streak particles |
+| 6 | **Reparo** | Warm golden glow, spiral particles converge |
+| 7 | **Expelliarmus** | Red flash, camera shake, concentrated red burst |
+| 8 | **Incendio** | Fire erupts, candles blaze 4x, orange-red particles |
+| 9 | **Aguamenti** | Blue water tint, candles dim, rain-like particles |
+| 0 | **Expecto Patronum** | Brilliant white-blue burst, bloom maxes out, 500 particles |
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| ESC | Quit |
-| 1-6 | Cast spells |
-| D | Toggle debug overlay |
+| Input | Action |
+|-------|--------|
+| Voice: "Lumos", "Expecto Patronum", etc. | Cast spells by speaking |
+| Keys 1-0 | Cast spells by keyboard (10 spells) |
+| D | Toggle debug overlay (FPS, particles, spell state) |
+| +/- | Adjust wand detection sensitivity |
+
+Voice recognition works in Chrome (uses browser's built-in speech service). On mobile/tablet: keyboard spells require a physical keyboard. Touch spell UI coming in a future version.
 
 ## Requirements
 
-- Python 3.9+
+- **Chrome or Edge** (desktop, for camera + WebGL)
 - Webcam
-- Microphone (optional, for voice commands)
-- Internet connection (optional, for speech recognition via Google API)
+- Any stick-shaped object for your wand
 
-### Dependencies
+Safari and Firefox: WebGL and keyboard spells work. Wand detection requires getUserMedia support. Keyboard shortcuts 1-0 always work.
 
-- **OpenCV** - camera capture and wand detection
-- **Pygame** - fullscreen display, particles, audio
-- **SpeechRecognition** - voice command detection (requires internet)
-- **pyttsx3** - offline wizard voice generation
-- **PyAudio** - microphone access
+## Architecture
 
-## Platform Notes
+Single `index.html` file (~1550 lines). Three.js r168 + UnrealBloomPass loaded from esm.sh CDN. No build step, no npm, no bundler. Local server required for FBX model loading (see Try It above).
 
-### macOS
-- First run requires granting **camera** and **microphone** access in System Preferences > Privacy & Security
-- Python/Terminal must be in the allowed apps list
+- **Rendering:** Three.js WebGLRenderer with EffectComposer (RenderPass + UnrealBloomPass)
+- **Wand detection:** getUserMedia → 160x120 downscaled canvas → frame differencing → EMA-smoothed motion centroid → Raycaster 3D projection
+- **Particles:** 80 dust motes + 1500 trail particles (ring buffer, gold→orange→red fade, ~0.8s lifetime)
+- **Voice recognition:** webkitSpeechRecognition, continuous mode, fuzzy matching with kid-friendly aliases
+- **Narrator:** SpeechSynthesis queue with priority interrupt, duplex policy (pauses recognition during speech)
+- **Spell effects:** 10 reversible Harry Potter spells with 4s duration + 1s lerp revert. Modify candle intensity, bloom, mesh colors/emissive/scale/position, camera shake. 5s cooldown between casts.
+- **Audio:** Web Audio API procedural synthesis (bandpass-filtered noise whoosh)
 
-### Linux
-- Install espeak for voice generation: `sudo apt install espeak`
-- Camera works via V4L2 (usually out of the box)
-- You may need: `sudo apt install python3-pyaudio`
+## Privacy
 
-### Windows
-- Best-effort support
-- PyAudio may require manual install of PortAudio binaries
-
-## Running in Windowed Mode
-
-For debugging or multi-monitor setups:
-
-```bash
-python main.py --windowed
-```
-
-## Offline Mode
-
-Voice commands require internet (Google Speech API). Without internet, the app works perfectly with keyboard shortcuts (keys 1-6). The keyboard hint appears automatically when speech recognition is unavailable.
-
-## How Detection Works
-
-Maya Magic uses a hybrid detection approach:
-
-1. **Primary: Background Subtraction (MOG2)** - Detects moving objects against a relatively stable background. Filters for elongated shapes (sticks) by aspect ratio.
-
-2. **Fallback: Motion Trail** - When the primary detector can't find an elongated shape for 30+ frames, it switches to tracking the fastest-moving point in frame. Kids wave wands in big arcs, so the tip is usually the fastest thing moving.
-
-The child never knows which detector is active. A small indicator in the corner shows the mode (+ for primary, * for fallback) for debugging.
+Your camera feed is processed entirely on your device. It never leaves your browser. Voice recognition uses your browser's built-in speech service (Google's servers in Chrome). No data is collected or sent by this app.
 
 ## Project Structure
 
 ```
 maya-magic/
-  main.py              # The whole app
-  generate_voices.py   # One-time voice WAV generation
-  setup.sh             # Install + generate voices + launch
-  requirements.txt     # Python dependencies
+  index.html           # The entire app
+  model/source/        # Dumbledore's Office FBX model + 17 PNG textures
+  scene.glb            # Legacy GLB model (unused, kept for reference)
+  start.sh             # Local dev server launcher
   README.md            # This file
-  LICENSE              # MIT
   CLAUDE.md            # Project context for Claude Code
-  tests/
-    test_gestures.py   # Unit tests (50 tests)
+  LICENSE              # MIT
+  .github/workflows/
+    pages.yml          # GitHub Pages deploy on push to webgl
 ```
 
 ## License
