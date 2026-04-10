@@ -2,6 +2,16 @@
 
 All notable changes to Maya Magic will be documented in this file.
 
+## [0.2.8.0] - 2026-04-09
+
+### Fixed
+- Wand trail particles now visible inside the room: reduced Raycaster projection distance from 2.0 to 1.0 units so particles spawn within room bounds instead of outside walls
+- Trail particle material now uses `depthTest: false` so particles render in front of room geometry instead of being culled
+- Trail particle size actually renders: fixed PointsMaterial uniform `size` from 0.15 to 0.25 (per-particle buffer attribute is ignored by PointsMaterial, only the uniform matters)
+
+### Added
+- Throttled debug logging in spawnTrailParticle (every 2s, logs world position for diagnosing particle placement)
+
 ## [0.2.7.0] - 2026-04-09
 
 ### Fixed
